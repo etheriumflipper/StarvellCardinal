@@ -336,7 +336,8 @@ def run_setup():
     }
     
     config['AutoUpdate'] = {
-        'enabled': '1'
+        'enabled': '1',
+        'auto_install': '1'
     }
     
     config['KeepAlive'] = {

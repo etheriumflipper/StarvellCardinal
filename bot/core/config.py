@@ -98,7 +98,8 @@ class ConfigManager:
                 'dir': 'storage'
             },
             'AutoUpdate': {
-                'enabled': 'true'
+                'enabled': 'true',
+                'auto_install': 'true'
             },
             'KeepAlive': {
                 'enabled': 'true',
@@ -475,7 +476,7 @@ class BotConfig:
     @staticmethod
     def AUTO_UPDATE_INSTALL() -> bool:
         """Автоматически устанавливать обновления и перезапускать бот"""
-        return _config_manager.get('AutoUpdate', 'auto_install', False)
+        return _config_manager.get('AutoUpdate', 'auto_install', True)
     
     # === Вечный онлайн ===
     @staticmethod
