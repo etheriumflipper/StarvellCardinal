@@ -243,6 +243,26 @@ class BackgroundTasks:
         """Проверка новых заказов"""
         try:
             new_orders = await self.starvell.check_new_orders()
+
+            if self._first_check_orders:
+                primed_orders = 0
+                for order in new_orders:
+                    order_id = order.get("id")
+                    status = order.get("status")
+                    if not order_id:
+                        continue
+                    await self.starvell.db.set_last_order(order_id, status or "CREATED")
+                    primed_orders += 1
+
+                self._first_check_orders = False
+
+                if primed_orders:
+                    logger.info(
+                        f"🧊 Первый запуск: кэш заказов прогрет без уведомлений ({primed_orders} заказов)"
+                    )
+                else:
+                    logger.info("🧊 Первый запуск: активных заказов для прогрева кэша не найдено")
+                return
             
             if not self.notifier:
                 logger.warning("Менеджер уведомлений не инициализирован")
@@ -588,4 +608,3 @@ class BackgroundTasks:
             
         except Exception as e:
             logger.error(f"❌ Ошибка в цикле авто-тикетов: {e}", exc_info=True)
-

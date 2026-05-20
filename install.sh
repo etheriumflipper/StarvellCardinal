@@ -103,6 +103,17 @@ sync_project() {
         "$INSTALL_DIR/storage/stats"
 }
 
+reset_runtime_state_if_needed() {
+    if [[ -f "$INSTALL_DIR/configs/_main.cfg" ]]; then
+        return
+    fi
+
+    log "Свежая установка без конфига: очищаю старый runtime state..."
+    find "$INSTALL_DIR/logs" -maxdepth 1 -type f \( -name '*.log' -o -name '*.txt' \) -delete 2>/dev/null || true
+    find "$INSTALL_DIR/storage" -type f \( -name '*.json' -o -name '*.txt' \) -delete 2>/dev/null || true
+    find "$INSTALL_DIR/cache" -type f \( -name '*.json' -o -name '*.txt' \) -delete 2>/dev/null || true
+}
+
 setup_python() {
     if [[ ! -x "$INSTALL_DIR/venv/bin/python" ]]; then
         log "Создаю виртуальное окружение..."
@@ -209,6 +220,7 @@ main() {
     prepare_source_dir
     ensure_user
     sync_project
+    reset_runtime_state_if_needed
     setup_python
     fix_permissions
     write_env_file
