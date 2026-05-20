@@ -1,6 +1,21 @@
-# Starvell Cardinal
+# ✨ Starvell Cardinal ✨
 
-Telegram-бот на Python для автоматизации работы со `Starvell.com`.
+> 🚀 Telegram-бот для автоматизации `Starvell.com`
+
+> 🔥 Чистый Cardinal • ⚙️ Автонастройка • 🔄 Автообновления • 🧩 Плагины
+
+## 🌐 Links
+
+- 👤 Author: [@embedium](https://t.me/embedium)
+- 📢 Channel: [@StarvellCardinal](https://t.me/StarvellCardinal)
+- 🧩 Plugins: [@StarvellPlugins](https://t.me/StarvellPlugins)
+- 💻 GitHub: [etheriumflipper/StarvellCardinal](https://github.com/etheriumflipper/StarvellCardinal)
+
+## ⚡ One Command Install
+
+```bash
+wget https://raw.githubusercontent.com/etheriumflipper/StarvellCardinal/main/install.sh -O install.sh && bash install.sh
+```
 
 Starvell Cardinal помогает держать магазин под контролем: отслеживать заказы, управлять лотами, настраивать автодействия и получать уведомления в Telegram.
 
