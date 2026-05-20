@@ -174,6 +174,7 @@ async def cmd_update(message: Message, auto_update, **kwargs):
     
     # Выполняем обновление
     result = await auto_update.perform_update()
+    safe_message = html.escape(result.get("message", ""))
     safe_output = html.escape(result.get("output", ""))
     
     if result["success"]:
@@ -181,7 +182,7 @@ async def cmd_update(message: Message, auto_update, **kwargs):
         auto_update.reset_notification_flag()
         
         await status_msg.edit_text(
-            result["message"] + "\n\n"
+            safe_message + "\n\n"
             f"<tg-spoiler>Git output:\n{safe_output}</tg-spoiler>\n\n"
             f"🔄 Перезапуск бота через 3 секунды..."
         )
@@ -194,7 +195,7 @@ async def cmd_update(message: Message, auto_update, **kwargs):
         os.execv(sys.executable, [sys.executable] + sys.argv)
     else:
         await status_msg.edit_text(
-            result["message"] + "\n\n"
+            safe_message + "\n\n"
             f"<tg-spoiler>Error:\n{safe_output}</tg-spoiler>"
         )
 
@@ -848,6 +849,7 @@ async def callback_update_now(callback: CallbackQuery, auto_update, **kwargs):
     try:
         # Выполняем обновление
         result = await auto_update.perform_update()
+        safe_message = html.escape(result.get("message", ""))
         safe_output = html.escape(result.get("output", ""))
         
         if result["success"]:
@@ -855,7 +857,7 @@ async def callback_update_now(callback: CallbackQuery, auto_update, **kwargs):
             auto_update.reset_notification_flag()
             
             response = (
-                f"{result['message']}\n\n"
+                f"{safe_message}\n\n"
                 f"<tg-spoiler>Git output:\n{safe_output}</tg-spoiler>\n\n"
                 f"🔄 Перезапуск бота через 3 секунды..."
             )
@@ -869,12 +871,13 @@ async def callback_update_now(callback: CallbackQuery, auto_update, **kwargs):
             os.execv(sys.executable, [sys.executable] + sys.argv)
         else:
             response = (
-                f"{result['message']}\n\n"
+                f"{safe_message}\n\n"
                 f"<tg-spoiler>Error:\n{safe_output}</tg-spoiler>"
             )
             await callback.message.edit_text(response, parse_mode="HTML")
     except Exception as e:
-        response = f"❌ <b>Ошибка при обновлении:</b>\n{str(e)}"
+        safe_error = html.escape(str(e))
+        response = f"❌ <b>Ошибка при обновлении:</b>\n{safe_error}"
         await callback.message.edit_text(response, parse_mode="HTML")
 
 
