@@ -19,9 +19,9 @@ wget https://raw.githubusercontent.com/etheriumflipper/StarvellCardinal/main/ins
 
 Starvell Cardinal помогает держать магазин под контролем: отслеживать заказы, управлять лотами, настраивать автодействия и получать уведомления в Telegram.
 
-## Быстрый старт
+## 🚀 Быстрый старт
 
-### Linux / VPS
+### 🐧 Linux / VPS
 
 Установка одной командой:
 
@@ -38,7 +38,7 @@ sudo systemctl stop starvell-cardinal
 sudo journalctl -u starvell-cardinal -f
 ```
 
-### Windows
+### 🪟 Windows
 
 ```bash
 git clone https://github.com/etheriumflipper/StarvellCardinal.git
@@ -47,31 +47,31 @@ Setup.bat
 Start.bat
 ```
 
-## Что умеет бот
+## 🧠 Что умеет бот
 
-- Автоматизация работы со `Starvell.com`
-- Управление лотами и товарами
-- Отслеживание заказов и сообщений
-- Telegram-уведомления по событиям
-- Первичная настройка через мастер
-- Автообновление с уведомлением о новой версии
-- Поддержка собственной системы плагинов
+- ⚙️ Автоматизация работы со `Starvell.com`
+- 📦 Управление лотами и товарами
+- 📨 Отслеживание заказов и сообщений
+- 🔔 Telegram-уведомления по событиям
+- 🛠️ Первичная настройка через мастер
+- 🔄 Автообновление с уведомлением о новой версии
+- 🧩 Поддержка собственной системы плагинов
 
-## Автообновление
+## 🔄 Автообновление
 
 Starvell Cardinal умеет проверять обновления при запуске и в фоне.
 
 Если в репозитории выходит новая версия:
 
-- бот видит новую `VERSION`
-- админам приходит уведомление в Telegram
-- в сообщении показывается текущая и новая версия
-- доступна кнопка `Обновить сейчас`
-- также можно использовать команду `/update`
+- 👀 бот видит новую `VERSION`
+- 📩 админам приходит уведомление в Telegram
+- 🏷️ в сообщении показывается текущая и новая версия
+- 🔘 доступна кнопка `Обновить сейчас`
+- ⌨️ также можно использовать команду `/update`
 
-Важно: чтобы обновление обнаружилось, при публикации новой версии нужно менять значение `VERSION` в [version.py](version.py).
+⚠️ Важно: чтобы обновление обнаружилось, при публикации новой версии нужно менять значение `VERSION` в [version.py](version.py).
 
-## Установка из репозитория
+## 📥 Установка из репозитория
 
 Если хотите ставить вручную:
 
@@ -83,23 +83,23 @@ sudo bash install.sh
 
 Установщик:
 
-- ставит зависимости
-- создает виртуальное окружение
-- запускает `first_setup.py`
-- создает `systemd`-сервис
-- поднимает бота в автономном режиме
+- 📦 ставит зависимости
+- 🐍 создает виртуальное окружение
+- 🧭 запускает `first_setup.py`
+- 🔌 создает `systemd`-сервис
+- 🟢 поднимает бота в автономном режиме
 
-## Первый запуск
+## 🧷 Первый запуск
 
 Во время настройки бот попросит:
 
-1. `Bot Token` от `@BotFather`
-2. пароль для входа в панель бота
-3. `session_cookie` от `Starvell.com`
+1. 🤖 `Bot Token` от `@BotFather`
+2. 🔐 пароль для входа в панель бота
+3. 🍪 `session_cookie` от `Starvell.com`
 
 После завершения мастер создает `configs/_main.cfg`, а сервис запускается автоматически.
 
-## Структура проекта
+## 🗂️ Структура проекта
 
 ```text
 StarvellCardinal/
@@ -118,21 +118,21 @@ StarvellCardinal/
 
 `plugins/` в публичной версии оставлен пустым, чтобы вы могли разворачивать свой чистый Cardinal и добавлять нужные плагины отдельно.
 
-## Разработка и кастомизация
+## 🛠️ Разработка и кастомизация
 
-- Основная логика бота: `bot/`
-- Работа с API: `api/`
-- Система плагинов: `bot/plugins/` и `plugins/`
-- Документация по плагинам: [docs/PLUGINS_API.md](docs/PLUGINS_API.md)
+- 🧠 Основная логика бота: `bot/`
+- 🌐 Работа с API: `api/`
+- 🧩 Система плагинов: `bot/plugins/` и `plugins/`
+- 📘 Документация по плагинам: [docs/PLUGINS_API.md](docs/PLUGINS_API.md)
 
-## Ссылки
+## 🔗 Ссылки
 
-- Автор: [@embedium](https://t.me/embedium)
-- Telegram-канал: [@StarvellCardinal](https://t.me/StarvellCardinal)
-- Плагины: [@StarvellPlugins](https://t.me/StarvellPlugins)
-- GitHub: [etheriumflipper/StarvellCardinal](https://github.com/etheriumflipper/StarvellCardinal)
-- Платформа: [Starvell.com](https://starvell.com)
+- 👤 Автор: [@embedium](https://t.me/embedium)
+- 📢 Telegram-канал: [@StarvellCardinal](https://t.me/StarvellCardinal)
+- 🧩 Плагины: [@StarvellPlugins](https://t.me/StarvellPlugins)
+- 💻 GitHub: [etheriumflipper/StarvellCardinal](https://github.com/etheriumflipper/StarvellCardinal)
+- 🌍 Платформа: [Starvell.com](https://starvell.com)
 
-## Лицензия
+## 📄 Лицензия
 
 Проект распространяется по лицензии [MIT](LICENSE).
