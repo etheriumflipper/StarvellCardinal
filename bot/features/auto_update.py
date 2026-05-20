@@ -19,7 +19,7 @@ logger = logging.getLogger("AutoUpdate")
 class AutoUpdateService:
     """
     Сервис автоматического обновления бота
-    Проверяет версию на GitHub и уведомляет о доступных обновлениях
+    Проверяет версию в источнике обновлений и уведомляет о доступных обновлениях
     """
     
     def __init__(self, notifier=None):
@@ -165,6 +165,11 @@ class AutoUpdateService:
             True если обновление доступно
         """
         try:
+            if not VERSION_URL:
+                if not silent:
+                    logger.info("Источник обновлений не настроен; проверка обновлений пропущена")
+                return False
+
             if not silent:
                 logger.info(f"🔍 Проверка обновлений... Текущая версия: {self.current_version}")
             
@@ -182,7 +187,7 @@ class AutoUpdateService:
                     
                     if not version_match:
                         if not silent:
-                            logger.warning("Не удалось распарсить версию из GitHub")
+                            logger.warning("Не удалось распарсить версию из источника обновлений")
                         return False
                     
                     self.latest_version = version_match.group(1)

@@ -2,8 +2,9 @@
 Обработчики команд бота
 """
 
-import hashlib
 import asyncio
+import hashlib
+import html
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -50,6 +51,20 @@ def _safe_float(val, default=0.0):
         return float(val)
     except Exception:
         return default
+
+
+def _format_keepalive_age(monotonic_time):
+    if not monotonic_time:
+        return "нет"
+
+    age = int(asyncio.get_event_loop().time() - monotonic_time)
+    if age < 0:
+        age = 0
+    if age < 60:
+        return f"{age} сек назад"
+    if age < 3600:
+        return f"{age // 60} мин назад"
+    return f"{age // 3600} ч {(age % 3600) // 60} мин назад"
 
 
 # === Состояния ===
@@ -111,7 +126,7 @@ async def cmd_start(message: Message, state: FSMContext, auto_update, **kwargs):
             repo_kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
                     text="Хочу такого же бота",
-                    url="https://github.com/Hackep1551/Starvell-cardinal"
+                    url="https://t.me/embedium"
                 )]
             ])
             await message.answer("🔒 Для доступа к боту введите пароль:", reply_markup=repo_kb)
@@ -126,7 +141,7 @@ async def cmd_start(message: Message, state: FSMContext, auto_update, **kwargs):
     update_available = auto_update.update_available if auto_update else False
     
     await message.answer(
-        "🌟 <b>Starvell Bot</b>\n\nПривет! Я помогу управлять вашим магазином на Starvell.\n\nИспользуйте меню ниже для управления ботом.",
+        "🌟 <b>Starvell Cardinal</b>\n\nПривет! Я помогу управлять вашим магазином на Starvell.\n\nИспользуйте меню ниже для управления ботом.",
         reply_markup=get_main_menu(update_available=update_available)
     )
 
@@ -618,6 +633,104 @@ async def callback_profile_back(callback: CallbackQuery, starvell, **kwargs):
     await callback.message.edit_text(text, reply_markup=keyboard)
 
 
+@router.message(Command("keepalive"))
+@router.message(lambda message: (message.text or "").strip().lower().startswith("keepalive"))
+async def cmd_keepalive(message: Message, keep_alive=None, starvell=None, **kwargs):
+    """KeepAlive status and manual actions."""
+    if not is_user_authorized(message.from_user.id):
+        return
+
+    if keep_alive is None:
+        await message.answer("❌ KeepAlive не найден в контексте бота. Обнови bot_core.py и перезапусти бота.")
+        return
+
+    text_parts = (message.text or "").strip().split()
+    action = text_parts[1].lower() if len(text_parts) > 1 else ""
+
+    action_result = ""
+    if action in ("reconnect", "restart", "r"):
+        ok = await keep_alive.restart_online_socket()
+        await asyncio.sleep(2)
+        action_result = "🔄 Websocket переподключён" if ok else "⛔ KeepAlive выключен в конфиге"
+    elif action in ("ping", "check", "p"):
+        ok = await keep_alive.force_http_check()
+        action_result = "✅ HTTP heartbeat прошёл" if ok else "⚠️ HTTP heartbeat не прошёл"
+
+    status = keep_alive.get_status()
+    now = asyncio.get_event_loop().time()
+    socket_last = status.get("last_socket_success")
+    http_last = status.get("last_success")
+    socket_fresh = bool(socket_last and now - socket_last < 90)
+
+    sid_present = "нет"
+    authorized = "не проверено"
+    username = "-"
+    auth_error = ""
+
+    if starvell is not None:
+        try:
+            api = getattr(starvell, "api", None)
+            session = getattr(api, "session", None)
+            if session and session.get_sid():
+                sid_present = "да"
+        except Exception:
+            sid_present = "ошибка проверки"
+
+        try:
+            user_info = await asyncio.wait_for(starvell.get_user_info(), timeout=10)
+            authorized = "да" if user_info.get("authorized") else "нет"
+            user = user_info.get("user") or {}
+            username = user.get("username") or user.get("nickname") or "-"
+        except Exception as e:
+            authorized = "ошибка"
+            auth_error = str(e)
+
+        try:
+            api = getattr(starvell, "api", None)
+            session = getattr(api, "session", None)
+            if session and session.get_sid():
+                sid_present = "да"
+        except Exception:
+            pass
+
+    lines = [
+        "🟢 <b>KeepAlive Starvell</b>",
+        "",
+        f"<b>Сервис:</b> {'включён' if status.get('enabled') else 'выключен'} / {'запущен' if status.get('running') else 'остановлен'}",
+        f"<b>Online websocket:</b> {'живой' if socket_fresh else 'нет свежего подтверждения'}",
+        f"<b>Namespaces:</b> <code>{html.escape(', '.join(status.get('connected_namespaces') or []) or '-')}</code>",
+        f"<b>Последний websocket:</b> {_format_keepalive_age(socket_last)}",
+        f"<b>Последний HTTP:</b> {_format_keepalive_age(http_last)}",
+        f"<b>Ошибок websocket подряд:</b> <code>{status.get('socket_fail_count', 0)}</code>",
+        f"<b>Ошибок HTTP подряд:</b> <code>{status.get('fail_count', 0)}</code>",
+        "",
+        f"<b>Starvell authorized:</b> {authorized}",
+        f"<b>SID:</b> {sid_present}",
+        f"<b>Аккаунт:</b> <code>{html.escape(str(username))}</code>",
+    ]
+
+    if action_result:
+        lines.insert(2, action_result)
+        lines.insert(3, "")
+
+    if auth_error:
+        lines.extend(["", f"<b>Ошибка авторизации:</b> <code>{html.escape(auth_error[:500])}</code>"])
+
+    if status.get("last_socket_error"):
+        lines.extend(["", f"<b>Socket error:</b> <code>{html.escape(str(status['last_socket_error'])[:500])}</code>"])
+
+    if status.get("last_socket_packet"):
+        lines.append(f"<b>Last packet:</b> <code>{html.escape(str(status['last_socket_packet'])[:500])}</code>")
+
+    lines.extend([
+        "",
+        "<code>/keepalive ping</code> - разовый HTTP check",
+        "<code>/keepalive reconnect</code> - переподключить websocket",
+    ])
+
+    await message.answer("\n".join(lines))
+
+
 @router.message(Command("logs"))
 async def cmd_logs(message: Message, **kwargs):
     """Команда /logs - отправить логи"""
@@ -715,7 +828,7 @@ async def process_password(message: Message, state: FSMContext):
         await state.clear()
         
         await message.answer(
-            "✅ Авторизация успешна!" + "\n\n" + "🌟 <b>Starvell Bot</b>\n\nПривет! Я помогу управлять вашим магазином на Starvell.\n\nИспользуйте меню ниже для управления ботом.",
+            "✅ Авторизация успешна!" + "\n\n" + "🌟 <b>Starvell Cardinal</b>\n\nПривет! Я помогу управлять вашим магазином на Starvell.\n\nИспользуйте меню ниже для управления ботом.",
             reply_markup=get_main_menu()
         )
     else:
@@ -774,7 +887,7 @@ async def callback_main_menu(callback: CallbackQuery, auto_update, **kwargs):
     update_available = auto_update.update_available if auto_update else False
     
     await callback.message.edit_text(
-        "🌟 <b>Starvell Bot</b>\n\nПривет! Я помогу управлять вашим магазином на Starvell.\n\nИспользуйте меню ниже для управления ботом.",
+        "🌟 <b>Starvell Cardinal</b>\n\nПривет! Я помогу управлять вашим магазином на Starvell.\n\nИспользуйте меню ниже для управления ботом.",
         reply_markup=get_main_menu(update_available=update_available)
     )
 
@@ -1340,13 +1453,13 @@ async def callback_about(callback: CallbackQuery):
         "ℹ️ <b>О боте</b>\n\n"
         "Starvell Cardinal — автоматизационный бот для Starvell.com.\n\n"
         "Автор: @embedium\n"
-        "Исходный код: https://github.com/embedium/Starvell-cardinal\n"
-        "Канал с новостями: https://t.me/Starvell_cardinal\n"
-        "Канал с плагинами: https://t.me/Starvell_plugins\n"
+        "Telegram: @embedium\n"
+        "Канал с новостями: @StarvellCardinal\n"
+        "Канал с плагинами: @StarvellPlugins\n"
     )
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔗 GitHub", url="https://github.com/Hackep1551/Starvell-cardinal")],
+        [InlineKeyboardButton(text="🔗 Telegram", url="https://t.me/embedium")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data=CBT.MAIN)]
     ])
 
@@ -1834,5 +1947,3 @@ async def handle_refund_cancel(callback: CallbackQuery):
     # Восстанавливаем исходные кнопки
     await callback.message.edit_reply_markup(reply_markup=callback.message.reply_markup)
     await callback.answer("Отменено")
-
-

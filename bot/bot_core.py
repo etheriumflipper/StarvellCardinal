@@ -59,22 +59,23 @@ async def main():
         BotCommand(command="logs", description="📋 Получить логи"),
         BotCommand(command="restart", description="🔁 Перезапустить бота"),
         BotCommand(command="session_cookie", description="🔑 Обновить session_cookie"),
+        BotCommand(command="keepalive", description="🟢 Статус онлайна Starvell"),
     ]
     await bot.set_my_commands(commands)
     logger.info("Меню команд установлено")
     
     try:
         await bot.set_my_short_description(
-            "🤖 Starvell Cardinal - автоматизация для Starvell.com\n\n📢 Новости: @Starvell_cardinal\n🐞 Плагины: @Starvell_plugins"
+            "🤖 Starvell Cardinal - автоматизация для Starvell.com\n\n📢 Новости: @StarvellCardinal\n🐞 Плагины: @StarvellPlugins"
         )
         
         description = (
             "🔥 Starvell Cardinal - мощный бот для автоматизации работы на Starvell.com\n\n"
             "Контакты:\n"
-            "🛠 Сделано с помощью: github.com/embedium/Starvell-cardinal\n"
-            "💬 Автор: @embedium\n"
-            "📢 Канал с новостями: t.me/Starvell_cardinal\n"
-            "🐞 Канал с плагинами: t.me/Starvell_plugins\n"
+            "🛠 Автор: @embedium\n"
+            "💬 Telegram: @embedium\n"
+            "📢 Канал с новостями: @StarvellCardinal\n"
+            "🐞 Канал с плагинами: @StarvellPlugins\n"
         )
         await bot.set_my_description(description)
         logger.info("Описание бота установлено")
@@ -134,6 +135,9 @@ async def main():
     
     try:
         await starvell.start()
+        # Первичный запрос сразу получает SID и проверяет, что сессия живая.
+        # KeepAlive использует этот SID для heartbeat.
+        user_info = await starvell.get_user_info()
         await auto_delivery.start()
         await auto_restore.start()
         await auto_raise.start()
@@ -145,7 +149,6 @@ async def main():
         await plugin_manager.run_handlers(plugin_manager.init_handlers, bot, starvell, db, plugin_manager)
         
         # Проверяем авторизацию
-        user_info = await starvell.get_user_info()
         if not user_info.get("authorized"):
             # Не отправляем нотификацию здесь, чтобы не дублировать логику
             # уведомления, уже реализованную в StarvellService._notify_session_error().
@@ -191,6 +194,7 @@ async def main():
         "auto_restore": auto_restore,
         "auto_raise": auto_raise,
         "auto_update": auto_update,
+        "keep_alive": keep_alive,
         "auto_response": auto_response,
         "autoticket_service": autoticket_service,
         "plugin_manager": plugin_manager,

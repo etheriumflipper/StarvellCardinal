@@ -75,8 +75,9 @@ class StarvellService:
             return info
         except Exception as e:
             from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
-                await self._notify_session_error()
+            # Отключено: NotFoundError не всегда означает истёкшую сессию
+            # if isinstance(e, NotFoundError):
+            #     await self._notify_session_error()
             raise
     
     async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
@@ -103,8 +104,9 @@ class StarvellService:
             return data.get("pageProps", {}).get("chats", [])
         except Exception as e:
             from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
-                await self._notify_session_error()
+            # Отключено: NotFoundError не всегда означает истёкшую сессию
+            # if isinstance(e, NotFoundError):
+            #     await self._notify_session_error()
             raise
         
     async def get_unread_chats(self) -> List[Dict[str, Any]]:
@@ -121,8 +123,9 @@ class StarvellService:
             return await self.api.get_messages(chat_id, limit)
         except Exception as e:
             from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
-                await self._notify_session_error()
+            # Отключено: NotFoundError не всегда означает истёкшую сессию
+            # if isinstance(e, NotFoundError):
+            #     await self._notify_session_error()
             raise
         
     async def send_message(self, chat_id: str, content: str) -> Dict[str, Any]:
@@ -175,8 +178,9 @@ class StarvellService:
         except Exception as e:
             # Проверяем, является ли это ошибкой NotFound (обычно устаревшая сессия)
             from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
-                await self._notify_session_error()
+            # Отключено: NotFoundError не всегда означает истёкшую сессию
+            # if isinstance(e, NotFoundError):
+            #     await self._notify_session_error()
             raise
     
     async def get_all_orders(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -198,8 +202,9 @@ class StarvellService:
             return orders if orders else []
         except Exception as e:
             from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
-                await self._notify_session_error()
+            # Отключено: NotFoundError не всегда означает истёкшую сессию
+            # if isinstance(e, NotFoundError):
+            #     await self._notify_session_error()
             raise
         
     async def refund_order(self, order_id: str) -> Dict[str, Any]:
@@ -247,8 +252,9 @@ class StarvellService:
                 return result
             except Exception as e:
                 from api.exceptions import NotFoundError
-                if isinstance(e, NotFoundError):
-                    await self._notify_session_error()
+                # Отключено: NotFoundError не всегда означает истёкшую сессию
+                # if isinstance(e, NotFoundError):
+                #     await self._notify_session_error()
                 await self.db.add_bump_history(game_id, category_ids, False)
                 raise
                 
@@ -267,8 +273,29 @@ class StarvellService:
         import logging
         from bot.core.config import BotConfig
         logger = logging.getLogger(__name__)
+
+        def message_sort_key(message: Dict[str, Any]) -> str:
+            for key in ("createdAt", "created_at", "timestamp", "sentAt", "updatedAt", "date", "id"):
+                value = message.get(key)
+                if value is not None:
+                    return str(value)
+            return ""
+
+        def get_chat_messages(chat: Dict[str, Any], limit: int = 10) -> List[Dict[str, Any]]:
+            messages = chat.get("messages", [])
+            if not isinstance(messages, list):
+                return []
+            return sorted(messages, key=message_sort_key, reverse=True)[:limit]
         
         new_messages = []
+
+        my_user_id = str((self.last_user_info.get("user") or {}).get("id", ""))
+        if not my_user_id:
+            try:
+                user_info = await self.get_user_info()
+                my_user_id = str((user_info.get("user") or {}).get("id", ""))
+            except Exception:
+                my_user_id = ""
         
         # Получаем все чаты
         chats = await self.get_chats()
@@ -281,7 +308,7 @@ class StarvellService:
         # Проверяем настройку авто-прочтения
         auto_read_enabled = BotConfig.AUTO_READ_ENABLED()
         
-        for chat in unread_chats:
+        for chat in chats:
             chat_id = chat.get("id")
             if not chat_id:
                 continue
@@ -290,34 +317,61 @@ class StarvellService:
             
             # Получаем последнее известное сообщение из БД
             last_known_id = await self.db.get_last_message(chat_id)
+            unread_count = chat.get("unreadMessageCount") or chat.get("unreadCount") or 0
             
             # Получаем последние 10 сообщений чата
-            messages = await self.get_messages(chat_id, limit=10)
+            messages = get_chat_messages(chat, limit=10)
             
             if not messages:
                 continue
+
+            latest_id = messages[0].get("id")
+            has_latest_change = bool(latest_id and latest_id != last_known_id)
             
             # Если это первый раз (нет в БД), определяем непрочитанные
             if not last_known_id:
-                unread_count = chat.get("unreadMessageCount") or chat.get("unreadCount") or 0
+                if latest_id:
+                    await self.db.set_last_message(chat_id, latest_id)
+
+                if unread_count <= 0:
+                    continue
+
                 if unread_count > 0:
-                    # Берем последние unread_count сообщений как новые
-                    for i in range(min(unread_count, len(messages))):
+                    # В новом чате выбираем именно входящие сообщения покупателя.
+                    incoming_messages = messages
+                    if my_user_id:
+                        incoming_messages = [
+                            msg for msg in messages
+                            if str(msg.get("authorId", "")) != my_user_id
+                        ]
+
+                    if not incoming_messages:
+                        incoming_messages = messages
+
+                    for msg in incoming_messages[:min(unread_count, len(incoming_messages))]:
                         chat_new_messages.append({
                             "chat_id": chat_id,
-                            "message": messages[i],
+                            "message": msg,
                             "chat": chat,
                         })
                     logger.debug(f"🆕 Обнаружено {len(chat_new_messages)} нов. сообщений в новом чате {chat_id}")
                 
                 # Сохраняем ID последнего сообщения
-                await self.db.set_last_message(chat_id, messages[0].get("id"))
                 
                 if chat_new_messages:
                     new_messages.extend(chat_new_messages)
                     if auto_read_enabled:
                         await self.mark_chat_as_read(chat_id)
                 continue
+
+            if not has_latest_change and unread_count <= 0:
+                continue
+
+            if has_latest_change and unread_count <= 0:
+                logger.debug(
+                    f"рџ”Ѓ РћР±РЅР°СЂСѓР¶РµРЅРѕ РёР·РјРµРЅРµРЅРёРµ latest message РІ С‡Р°С‚Рµ {chat_id} "
+                    f"Р±РµР· unreadCount (last_known_id={last_known_id}, latest_id={latest_id})"
+                )
 
             for msg in messages:
                 msg_id = msg.get("id")
@@ -336,13 +390,11 @@ class StarvellService:
             new_messages.extend(chat_new_messages)
                     
             # Обновляем последнее сообщение
-            if messages:
-                latest_id = messages[0].get("id")
-                if latest_id:
-                    await self.db.set_last_message(chat_id, latest_id)
+            if latest_id:
+                await self.db.set_last_message(chat_id, latest_id)
             
             # Помечаем чат как прочитанный после обработки (если включено)
-            if auto_read_enabled:
+            if auto_read_enabled and (unread_count > 0 or chat_new_messages):
                 await self.mark_chat_as_read(chat_id)
                     
         return new_messages
@@ -394,8 +446,9 @@ class StarvellService:
             return offers
         except Exception as e:
             from api.exceptions import NotFoundError
-            if isinstance(e, NotFoundError):
-                await self._notify_session_error()
+            # Отключено: NotFoundError не всегда означает истёкшую сессию
+            # if isinstance(e, NotFoundError):
+            #     await self._notify_session_error()
             raise RuntimeError(f"Ошибка получения лотов: {e}")
     
     async def activate_lot(self, lot_id: str, amount: Optional[int] = None) -> bool:
@@ -431,6 +484,13 @@ class StarvellService:
             raise RuntimeError("API не инициализирован")
         
         return await self.api.keep_alive()
+
+    async def connect_online_socket(self):
+        """Открыть websocket /online для поддержания онлайн-статуса."""
+        if not self.api:
+            raise RuntimeError("API не инициализирован")
+
+        return await self.api.connect_online_socket()
     
     async def raise_lots(self, game_id: int, category_ids: List[int]) -> bool:
         """

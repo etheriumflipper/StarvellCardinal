@@ -1,10 +1,20 @@
 # Игнорируем конфиденциальные данные
-configs/
+configs/*
 !configs/.gitkeep
 
 # Хранилище данных
-storage/
-data/
+storage/*
+!storage/.gitkeep
+!storage/cache/
+!storage/cache/.gitkeep
+!storage/products/
+!storage/products/.gitkeep
+!storage/settings/
+!storage/settings/.gitkeep
+!storage/stats/
+!storage/stats/.gitkeep
+data/*
+!data/.gitkeep
 .github/
 
 # Кеш
@@ -15,7 +25,7 @@ cache/
 test/
 
 # Логи
-logs/
+logs/*
 !logs/.gitkeep
 *.log
 bot.log

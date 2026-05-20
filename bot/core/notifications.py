@@ -3,6 +3,7 @@
 """
 
 import logging
+import uuid
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from aiogram import Bot
@@ -84,6 +85,78 @@ class NotificationManager:
         self.plugin_manager = None  # Будет установлен позже
         self.starvell_service = starvell_service  # Ссылка на сервис Starvell
         self._nickname_cache: Dict[str, str] = {}  # Кэш nickname: user_id -> nickname
+
+    @staticmethod
+    def _normalize_chat_id(chat_id: Any) -> str:
+        """Вернуть UUID чата в строковом виде или пустую строку."""
+        if chat_id is None:
+            return ""
+
+        chat_id = str(chat_id).strip()
+        if not chat_id:
+            return ""
+
+        try:
+            return str(uuid.UUID(chat_id))
+        except (ValueError, AttributeError, TypeError):
+            return ""
+
+    async def _resolve_order_chat_id(self, order_data: Optional[dict]) -> str:
+        """Получить реальный UUID чата для заказа, а не buyerId."""
+        if not order_data:
+            return ""
+
+        direct_candidates = [
+            order_data.get("chat_id"),
+            order_data.get("chatId"),
+            (order_data.get("chat") or {}).get("id") if isinstance(order_data.get("chat"), dict) else None,
+        ]
+
+        for candidate in direct_candidates:
+            normalized = self._normalize_chat_id(candidate)
+            if normalized:
+                order_data["chat_id"] = normalized
+                return normalized
+
+        order_id = str(order_data.get("id", "")).strip()
+        if self.starvell_service and order_id:
+            try:
+                details = await self.starvell_service.get_order_details(order_id)
+                page_props = details.get("pageProps", {}) if isinstance(details, dict) else {}
+                chat_data = page_props.get("chat", {}) if isinstance(page_props, dict) else {}
+                order_info = page_props.get("order", {}) if isinstance(page_props, dict) else {}
+
+                detail_candidates = [
+                    chat_data.get("id") if isinstance(chat_data, dict) else None,
+                    order_info.get("chatId") if isinstance(order_info, dict) else None,
+                    details.get("chat_id") if isinstance(details, dict) else None,
+                    details.get("chatId") if isinstance(details, dict) else None,
+                ]
+
+                for candidate in detail_candidates:
+                    normalized = self._normalize_chat_id(candidate)
+                    if normalized:
+                        order_data["chat_id"] = normalized
+                        return normalized
+            except Exception as e:
+                logger.debug(f"Не удалось получить chat_id из деталей заказа {order_id}: {e}")
+
+        buyer_data = order_data.get("user") or order_data.get("buyer") or {}
+        buyer_id = order_data.get("buyerId")
+        if not buyer_id and isinstance(buyer_data, dict):
+            buyer_id = buyer_data.get("id")
+
+        if self.starvell_service and buyer_id:
+            try:
+                resolved_chat_id = await self.starvell_service.find_chat_by_user_id(str(buyer_id))
+                normalized = self._normalize_chat_id(resolved_chat_id)
+                if normalized:
+                    order_data["chat_id"] = normalized
+                    return normalized
+            except Exception as e:
+                logger.debug(f"Не удалось найти chat_id по buyerId={buyer_id}: {e}")
+
+        return ""
     
     async def _get_nickname_by_id(self, user_id: str) -> Optional[str]:
         """
@@ -293,11 +366,11 @@ class NotificationManager:
         )
         
         # Вызываем хэндлеры плагинов для новых сообщений
-        # Передаём тот же display_name что использовали для уведомления
+        # Передаём реальный author ID, а не display_name
         await self._run_plugin_handlers_for_new_message(
-            chat_id, 
-            display_name,  # Уже содержит nickname или ID
-            content, 
+            chat_id,
+            author,  # Передаём оригинальный ID автора
+            content,
             message_id
         )
     
@@ -412,19 +485,8 @@ class NotificationManager:
         # Создаём кнопки
         buttons = []
         
-        # Получаем chat_id покупателя из order_data
-        chat_id = None
-        if order_data:
-            # Пробуем извлечь из buyerId
-            buyer_id = order_data.get("buyerId")
-            if buyer_id:
-                chat_id = str(buyer_id)
-            else:
-                buyer_data = order_data.get("user") or order_data.get("buyer")
-                if isinstance(buyer_data, dict):
-                    chat_id = buyer_data.get("id")
-                    if chat_id:
-                        chat_id = str(chat_id)
+        # Получаем реальный UUID чата покупателя
+        chat_id = await self._resolve_order_chat_id(order_data)
         
         # Проверяем количество быстрых ответов
         template_manager = get_template_manager()
@@ -615,9 +677,9 @@ class NotificationManager:
             'chat_id': ''  # Добавляем chat_id покупателя
         }
         
-        # Получаем имя покупателя и chat_id
+        # Получаем имя покупателя
         buyer = order_data.get("user") or order_data.get("buyer") or {}
-        buyer_id = order_data.get("buyerId")  # Числовой ID покупателя
+        plugin_order_data['chat_id'] = await self._resolve_order_chat_id(order_data)
         
         if isinstance(buyer, dict):
             plugin_order_data['buyer'] = (
@@ -627,14 +689,8 @@ class NotificationManager:
                 buyer.get("displayName") or
                 str(buyer.get("id", "Unknown"))
             )
-            user_id = buyer.get("id")
-            if user_id:
-                plugin_order_data['chat_id'] = str(user_id)
         elif isinstance(buyer, str):
             plugin_order_data['buyer'] = buyer
-        
-        if not plugin_order_data['chat_id'] and buyer_id:
-            plugin_order_data['chat_id'] = str(buyer_id)
         
         # Получаем цену (конвертируем из копеек)
         amount_kopecks = (
@@ -673,11 +729,11 @@ class NotificationManager:
                     if not self.plugin_manager.plugins[plugin_uuid].enabled:
                         continue
                 
-                # Вызываем асинхронный хэндлер с передачей starvell_service
+                # Вызываем асинхронный хэндлер с передачей starvell_service и bot
                 if asyncio.iscoroutinefunction(handler):
-                    await handler(plugin_order_data, starvell_service=self.starvell_service)
+                    await handler(plugin_order_data, starvell_service=self.starvell_service, bot=self.bot)
                 else:
-                    handler(plugin_order_data, starvell_service=self.starvell_service)
+                    handler(plugin_order_data, starvell_service=self.starvell_service, bot=self.bot)
             except Exception as e:
                 logger.error(f"Ошибка выполнения хэндлера плагина {handler.__name__}: {e}", exc_info=True)
     
@@ -685,7 +741,9 @@ class NotificationManager:
         """Вызов хэндлеров плагинов для новых сообщений"""
         if not self.plugin_manager:
             return
-        
+
+        logger.debug(f"Вызов плагинов для сообщения: chat_id={chat_id}, author={author}, content={content[:50]}")
+
         # Подготавливаем данные для плагинов
         plugin_message_data = {
             'chat_id': chat_id,
@@ -693,7 +751,7 @@ class NotificationManager:
             'content': content,
             'message_id': message_id or ''
         }
-        
+
         # Вызываем хэндлеры плагинов асинхронно
         import asyncio
         for handler in self.plugin_manager.new_message_handlers:
@@ -702,13 +760,16 @@ class NotificationManager:
                 plugin_uuid = getattr(handler, 'plugin_uuid', None)
                 if plugin_uuid and plugin_uuid in self.plugin_manager.plugins:
                     if not self.plugin_manager.plugins[plugin_uuid].enabled:
+                        logger.debug(f"Плагин {plugin_uuid} отключён, пропускаем")
                         continue
-                
-                # Вызываем асинхронный хэндлер с передачей starvell_service
+
+                logger.debug(f"Вызов обработчика {handler.__name__} из плагина {plugin_uuid}")
+
+                # Вызываем асинхронный хэндлер с передачей starvell_service и bot
                 if asyncio.iscoroutinefunction(handler):
-                    await handler(plugin_message_data, starvell_service=self.starvell_service)
+                    await handler(plugin_message_data, starvell_service=self.starvell_service, bot=self.bot)
                 else:
-                    handler(plugin_message_data, starvell_service=self.starvell_service)
+                    handler(plugin_message_data, starvell_service=self.starvell_service, bot=self.bot)
             except Exception as e:
                 logger.error(f"Ошибка выполнения хэндлера плагина {handler.__name__}: {e}", exc_info=True)
 

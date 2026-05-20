@@ -216,8 +216,8 @@ class AutoTicketService:
                         
                         return True, f"Тикет создан ({len(order_ids)} заказов)"
                     elif response.status == 401:
-                        logger.error(f"❌ Ошибка авторизации (401) - проверьте session_cookie")
-                        return False, "Ошибка авторизации (истекла сессия)"
+                        logger.warning(f"⚠️ Получен 401 (возможно ложное срабатывание) - продолжаем работу")
+                        return False, "Временная ошибка авторизации (игнорируется)"
                     elif response.status == 400:
                         logger.error(f"❌ Неверные данные (400)")
                         logger.error(f"Ответ: {response_text[:300]}")

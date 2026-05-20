@@ -54,6 +54,7 @@ class ConfigManager:
                 'autoRaise': 'false',
                 'autoDelivery': 'false',
                 'autoRestore': 'false',
+                'autoRead': 'true',
                 'locale': 'ru',
                 'autoTicket': 'false',
                 'autoTicketInterval': '3600',
@@ -100,7 +101,8 @@ class ConfigManager:
                 'enabled': 'true'
             },
             'KeepAlive': {
-                'enabled': 'true'
+                'enabled': 'true',
+                'interval': '30'
             },
             'Other': {
                 'debug': 'false',
@@ -480,6 +482,15 @@ class BotConfig:
     def KEEP_ALIVE_ENABLED() -> bool:
         """Поддерживать онлайн статус"""
         return _config_manager.get('KeepAlive', 'enabled', True)
+
+    @staticmethod
+    def KEEP_ALIVE_INTERVAL() -> int:
+        """Интервал heartbeat в секундах"""
+        try:
+            interval = int(_config_manager.get('KeepAlive', 'interval', 30))
+        except (TypeError, ValueError):
+            interval = 30
+        return max(interval, 10)
     
     # === Чёрный список ===
     @staticmethod

@@ -171,21 +171,45 @@ class StarAPI:
     async def get_messages(self, chat_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """
         Получить сообщения из чата
-        
+
         Args:
             chat_id: ID чата
             limit: Максимальное количество сообщений
-            
+
         Returns:
             list: Список сообщений
         """
-        data = await self.session.post_json(
-            f"{self.config.API_URL}/messages/list",
-            data={"chatId": chat_id, "limit": limit},
-            referer=f"{self.config.BASE_URL}/chat",
-        )
-        
-        return data if isinstance(data, list) else []
+        def message_sort_key(message: Dict[str, Any]) -> str:
+            for key in ("createdAt", "created_at", "timestamp", "sentAt", "updatedAt", "date", "id"):
+                value = message.get(key)
+                if value is not None:
+                    return str(value)
+            return ""
+
+        # Starvell API не имеет прямого endpoint для получения сообщений
+        # Вместо этого получаем сообщения через список чатов
+        try:
+            chats_data = await self.get_chats()
+
+            # Ищем нужный чат
+            for chat in chats_data.get("pageProps", {}).get("chats", []):
+                if chat.get("id") == chat_id:
+                    # Нормализуем порядок: новые сообщения должны идти первыми.
+                    messages = chat.get("messages", [])
+                    if not isinstance(messages, list):
+                        return []
+
+                    sorted_messages = sorted(messages, key=message_sort_key, reverse=True)
+                    return sorted_messages[:limit]
+
+            # Если чат не найден, возвращаем пустой список
+            return []
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Ошибка получения сообщений для чата {chat_id}: {e}")
+            return []
         
     async def send_message(self, chat_id: str, content: str) -> Dict[str, Any]:
         """
@@ -215,29 +239,60 @@ class StarAPI:
             bool: True если успешно
         """
         try:
+            if not self.session.get_sid():
+                try:
+                    await self.get_user_info()
+                except Exception as e:
+                    logger.debug(f"Не удалось получить SID перед автопрочтением чата {chat_id}: {e}")
+
             # Пробуем разные возможные эндпоинты
             endpoints = [
                 f"{self.config.API_URL}/messages/read",
                 f"{self.config.API_URL}/chats/read", 
                 f"{self.config.API_URL}/chat/read",
             ]
-            
+
+            payloads = [
+                {"chatId": chat_id},
+                {"chat_id": chat_id},
+                {"id": chat_id},
+            ]
+
+            last_error = None
             for endpoint in endpoints:
-                try:
-                    await self.session.post_json(
-                        endpoint,
-                        data={"chatId": chat_id},
-                        referer=f"{self.config.BASE_URL}/chat/{chat_id}",
-                    )
-                    return True
-                except Exception:
-                    continue
-                    
-            # Если ни один endpoint не сработал, 
-            # просто получаем сообщения - это может пометить как прочитанное
-            await self.get_messages(chat_id, limit=1)
-            return True
-            
+                for payload in payloads:
+                    try:
+                        await self.session.post_json(
+                            endpoint,
+                            data=payload,
+                            referer=f"{self.config.BASE_URL}/chat/{chat_id}",
+                            include_sid=True,
+                        )
+                        logger.debug(
+                            f"Чат {chat_id} помечен прочитанным через {endpoint} с payload {list(payload.keys())[0]}"
+                        )
+                        return True
+                    except Exception as e:
+                        last_error = e
+                        logger.debug(
+                            f"Не сработало автопрочтение чата {chat_id}: endpoint={endpoint}, "
+                            f"payload={payload}, error={e}"
+                        )
+
+            logger.warning(
+                f"Не удалось автоматически пометить чат {chat_id} как прочитанный: "
+                f"{last_error or 'неизвестная ошибка'}"
+            )
+            try:
+                await self.get_messages(chat_id, limit=1)
+                logger.debug(f"Чат {chat_id} помечен прочитанным через fallback get_messages()")
+                return True
+            except Exception as fallback_error:
+                logger.warning(
+                    f"Fallback автопрочтения для чата {chat_id} тоже не сработал: {fallback_error}"
+                )
+                return False
+
         except Exception as e:
             logger.debug(f"Не удалось пометить чат {chat_id} как прочитанный: {e}")
             return False
@@ -605,19 +660,56 @@ class StarAPI:
         Returns:
             True если запрос успешен, False если ошибка
         """
+        if not self.session.get_sid():
+            try:
+                await self.get_user_info()
+            except Exception as sid_error:
+                logger.debug(f"Не удалось получить SID перед heartbeat: {sid_error}")
+
         try:
             # Отправляем heartbeat запрос
-            response = await self.session.post_json(
+            await self.session.post_json(
                 f"{self.config.API_URL}/user/heartbeat",
                 data={},
                 referer=f"{self.config.BASE_URL}/",
                 include_sid=True,
             )
             return True
-        except Exception as e:
-            # Пробуем альтернативный метод - просто запрос к чатам
+        except Exception as heartbeat_error:
+            logger.debug(f"Heartbeat endpoint не сработал, пробуем fallback: {heartbeat_error}")
+
+        # Резервные запросы тоже обновляют активность сессии на сайте.
+        for fallback_name, fallback_call in (
+            ("get_user_info", self.get_user_info),
+            ("get_chats", self.get_chats),
+        ):
             try:
-                await self.get_chats()
+                await fallback_call()
+                logger.debug(f"KeepAlive fallback успешен через {fallback_name}")
                 return True
-            except Exception:
-                return False
+            except Exception as fallback_error:
+                logger.debug(f"KeepAlive fallback {fallback_name} не сработал: {fallback_error}")
+
+        return False
+
+    async def connect_online_socket(self):
+        """
+        Открыть реальный Socket.IO namespace /online, который использует фронт Starvell
+        для поддержания онлайн-статуса.
+        """
+        if not self.session.get_sid():
+            try:
+                await self.get_user_info()
+            except Exception as sid_error:
+                logger.debug(f"Не удалось получить SID перед online websocket: {sid_error}")
+
+        return await self.session.ws_connect(
+            f"{self.config.BASE_URL.replace('https://', 'wss://').replace('http://', 'ws://')}/socket.io/?EIO=4&transport=websocket",
+            referer=f"{self.config.BASE_URL}/",
+            headers={
+                "origin": self.config.BASE_URL,
+                "cache-control": "no-cache",
+                "pragma": "no-cache",
+            },
+            include_sid=True,
+        )

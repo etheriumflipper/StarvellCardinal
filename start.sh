@@ -1,27 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-clear
-echo "================================"
-echo "Starvell Telegram Bot"
-echo "================================"
-echo ""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Проверка Python
-if ! command -v python3 &> /dev/null; then
-    echo "[ERROR] Python3 не установлен!"
-    echo "Установите Python3: sudo apt install python3"
-    exit 1
+PYTHON_BIN="python3"
+if [[ -x "$SCRIPT_DIR/venv/bin/python" ]]; then
+    PYTHON_BIN="$SCRIPT_DIR/venv/bin/python"
 fi
 
-echo "[INFO] Запуск бота..."
-echo ""
+echo "================================"
+echo "Starvell Cardinal"
+echo "================================"
+echo
 
-python3 main.py
-
-if [ $? -ne 0 ]; then
-    echo ""
-    echo "[ERROR] Бот завершился с ошибкой!"
-    echo "Проверьте logs/bot.log для деталей"
-    echo ""
-    exit 1
-fi
+exec "$PYTHON_BIN" "$SCRIPT_DIR/main.py"

@@ -1760,12 +1760,12 @@ async def process_order(order_data: dict, starvell_service) -> bool:
 
 - **Aiogram Documentation**: <https://docs.aiogram.dev/>
 - **Python Async/Await**: <https://docs.python.org/3/library/asyncio.html>
-- **Starvell Cardinal GitHub**: <https://github.com/embedium/Starvell-cardinal>
+- **Автор:** @embedium
 
 ## Поддержка
 
-- GitHub: <https://github.com/embedium/Starvell-cardinal>
 - Telegram: @embedium
+- Telegram: @StarvellPlugins
 
 ---
 

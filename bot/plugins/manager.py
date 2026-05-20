@@ -1,5 +1,5 @@
 """
-Система плагинов для Starvell Bot 
+Система плагинов для Starvell Cardinal
 """
 
 import os

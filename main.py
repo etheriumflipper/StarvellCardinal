@@ -1,5 +1,5 @@
 """
-Starvell Bot - главный файл запуска
+Starvell Cardinal - главный файл запуска
 """
 
 import os
@@ -101,7 +101,7 @@ LOGO = r"""
 ║                 ⚡ Telegram Bot v{:<16} ⚡                 ║
 ║                                                                      ║
 ║        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━           ║
-║            🚀 Бот для Starvell.com | By embedium 🚀                  ║
+║            🚀 Бот для Starvell.com | By @embedium 🚀                 ║
 ╚══════════════════════════════════════════════════════════════════════╝
 """
 
@@ -109,8 +109,8 @@ def print_logo():
     """Вывести логотип"""
     print("\n" + LOGO.format(VERSION))
     print("By @embedium")
-    print("GitHub: github.com/embedium/Starvell-cardinal")
-    print("Telegram: t.me/Starvell_cardinal")
+    print("Telegram: @embedium")
+    print("Telegram: t.me/embedium")
     print()
 
 def set_console_title(title: str):
@@ -150,7 +150,7 @@ async def main():
         sys.exit(1)
     
     # Устанавливаем заголовок
-    set_console_title(f"Starvell Bot v{VERSION}")
+    set_console_title(f"Starvell Cardinal v{VERSION}")
     
     # Переходим в директорию скрипта
     if getattr(sys, 'frozen', False):

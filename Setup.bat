@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ================================
-echo Starvell Bot - Setup
+echo Starvell Cardinal - Setup
 echo ================================
 echo.
 

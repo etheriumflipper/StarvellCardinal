@@ -65,7 +65,7 @@ def print_header(step=None, total=4):
     else:
         print(f"\n{Fore.CYAN}╔{'═' * 70}╗")
         print(f"║{' ' * 20}{Fore.WHITE}{Style.BRIGHT}ДОБРО ПОЖАЛОВАТЬ В STARVELL CARDINAL{Fore.CYAN}{Style.NORMAL}{' ' * 15}║")
-        print(f"║{' ' * 25}{Fore.WHITE}Made by @embedium{Fore.CYAN}{' ' * 30}║")
+        print(f"║{' ' * 22}{Fore.WHITE}Made by @embedium{Fore.CYAN}{' ' * 26}║")
         print(f"╚{'═' * 70}╝{Style.RESET_ALL}\n")
 
 
@@ -340,7 +340,8 @@ def run_setup():
     }
     
     config['KeepAlive'] = {
-        'enabled': '1'
+        'enabled': '1',
+        'interval': '30'
     }
     
     config['Storage'] = {
@@ -427,8 +428,9 @@ def run_setup():
     
     print(f"{Fore.CYAN}╔{'═' * 70}╗")
     print(f"║{' ' * 18}{Fore.WHITE}Документация: {Fore.GREEN}docs/PLUGINS_API.md{Fore.CYAN}{' ' * 22}║")
-    print(f"║{' ' * 20}{Fore.WHITE}GitHub: {Fore.GREEN}github.com/embedium{Fore.CYAN}{' ' * 23}║")
-    print(f"║{' ' * 18}{Fore.WHITE}Telegram: {Fore.GREEN}@embedium{Fore.CYAN}{' ' * 34}║")
+    print(f"║{' ' * 20}{Fore.WHITE}Автор: {Fore.GREEN}@embedium{Fore.CYAN}{' ' * 31}║")
+    print(f"║{' ' * 19}{Fore.WHITE}Новости: {Fore.GREEN}@StarvellCardinal{Fore.CYAN}{' ' * 24}║")
+    print(f"║{' ' * 18}{Fore.WHITE}Плагины: {Fore.GREEN}@StarvellPlugins{Fore.CYAN}{' ' * 27}║")
     print(f"╚{'═' * 70}╝{Style.RESET_ALL}\n")
     
     print(f"{Fore.YELLOW}{Style.BRIGHT}Спасибо за установку Starvell Cardinal!{Style.RESET_ALL}\n")

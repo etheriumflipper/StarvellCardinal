@@ -61,7 +61,7 @@ colorama>=0.4.6         # Цветной вывод в консоль
 1. Установите Python 3.9 или выше с [python.org](https://www.python.org/downloads/)
 2. Скачайте проект:
    ```bash
-   git clone https://github.com/embedium/Starvell-cardinal.git
+   git clone <REPOSITORY_URL>
    cd Starvell-cardinal
    ```
 3. Установите зависимости:
@@ -75,45 +75,40 @@ colorama>=0.4.6         # Цветной вывод в консоль
 
 ### Linux (Ubuntu/Debian)
 
-1. Установите Python и pip:
+1. Клонируйте репозиторий:
    ```bash
-   sudo apt update
-   sudo apt install python3 python3-pip git -y
-   ```
-
-2. Клонируйте репозиторий:
-   ```bash
-   git clone https://github.com/embedium/Starvell-cardinal.git
+   git clone <REPOSITORY_URL>
    cd Starvell-cardinal
    ```
 
-3. Установите зависимости:
+2. Запустите установщик:
    ```bash
-   pip3 install -r requirements.txt
+   sudo bash install.sh
    ```
 
-4. Запустите бота:
+3. После установки используйте systemd:
    ```bash
-   python3 main.py
+   sudo systemctl status starvell-cardinal
+   sudo systemctl restart starvell-cardinal
+   sudo journalctl -u starvell-cardinal -f
    ```
 
 ### Установка через URL (Linux)
 
-Можно установить напрямую с GitHub:
+Можно установить одной командой:
 
 ```bash
-# Клонирование и установка одной командой
-git clone https://github.com/embedium/Starvell-cardinal.git && cd Starvell-cardinal && pip3 install -r requirements.txt && python3 main.py
+git clone <REPOSITORY_URL> && cd Starvell-cardinal && sudo bash install.sh
 ```
 
 ### Первый запуск
 
-При первом запуске откроется мастер настройки, который попросит:
+Во время `install.sh` откроется мастер настройки, который попросит:
 1. **Bot Token** — получите у [@BotFather](https://t.me/BotFather)
 2. **Пароль** — для защиты доступа к боту
 3. **Session Cookie** — из браузера на starvell.com (F12 → Application → Cookies → session)
 
-После настройки бот автоматически запустится.
+После настройки установщик создаст и запустит `systemd`-сервис автоматически.
 
 ---
 
@@ -281,7 +276,7 @@ BIND_TO_NEW_MESSAGE = [on_new_message]
 Бот использует продвинутую систему логирования с цветным выводом:
 
 ```
-[I] 14:23:45 | Запуск Starvell Bot
+[I] 14:23:45 | Запуск Starvell Cardinal
 [D] 14:23:46 | Инициализация компонентов
 [W] 14:23:47 | AutoDelivery отключена
 [E] 14:23:48 | Ошибка подключения к API
@@ -371,8 +366,8 @@ python main.py
 
 ## 🔗 Ссылки
 
-- **GitHub:** [embedium/Starvell-cardinal](https://github.com/embedium/Starvell-cardinal)
 - **Telegram:** [@embedium](https://t.me/embedium)
+- **Telegram:** [@StarvellPlugins](https://t.me/StarvellPlugins)
 - **Платформа:** [Starvell.com](https://starvell.com)
 
 ---

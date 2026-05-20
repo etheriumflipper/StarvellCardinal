@@ -226,6 +226,30 @@ class SessionManager:
         if last_error:
             raise StarAPIError(f"Не удалось выполнить запрос после {retry_count} попыток: {last_error}")
         raise StarAPIError("Неизвестная ошибка при выполнении запроса")
+
+    async def ws_connect(
+        self,
+        url: str,
+        referer: str = None,
+        headers: Dict[str, str] = None,
+        include_sid: bool = False,
+    ) -> aiohttp.ClientWebSocketResponse:
+        """Открыть WebSocket с теми же cookies/headers, что и обычные запросы."""
+        if self._session is None:
+            await self.start()
+
+        request_headers = self._get_headers(referer, headers)
+        cookies = self._get_cookies(include_sid)
+        request_headers.setdefault(
+            "cookie",
+            "; ".join(f"{key}={value}" for key, value in cookies.items() if value is not None),
+        )
+        return await self._session.ws_connect(
+            url,
+            headers=request_headers,
+            autoping=False,
+            heartbeat=None,
+        )
                 
     async def get_text(
         self,
