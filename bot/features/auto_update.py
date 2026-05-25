@@ -267,7 +267,16 @@ class AutoUpdateService:
             repo_dir = str(Path.cwd().resolve()).replace("\\", "/")
 
             def git_cmd(*args: str) -> list[str]:
-                return ["git", "-c", f"safe.directory={repo_dir}", *args]
+                # Базовая команда + safe.directory + дефолтная git identity,
+                # чтобы git merge/commit не падал, если на сервере не сконфигурён
+                # user.name/user.email (актуально для systemd-юзеров вроде starvell).
+                return [
+                    "git",
+                    "-c", f"safe.directory={repo_dir}",
+                    "-c", "user.name=Starvell Cardinal",
+                    "-c", "user.email=cardinal@starvell.local",
+                    *args,
+                ]
             
             # Проверяем наличие .git
             if not Path(".git").exists():
