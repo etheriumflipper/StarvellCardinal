@@ -209,8 +209,9 @@ async def cmd_update(message: Message, auto_update, **kwargs):
 
 
 @router.message(Command("check_update"))
+@router.message(Command("check_updates"))
 async def cmd_check_update(message: Message, auto_update, **kwargs):
-    """Команда /check_update - проверить наличие обновлений вручную"""
+    """Команда /check_update(/s) - проверить наличие обновлений вручную"""
     if not is_user_authorized(message.from_user.id):
         return
 
