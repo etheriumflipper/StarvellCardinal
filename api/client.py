@@ -1,15 +1,20 @@
 """Основной клиент API"""
 
 import asyncio
+import json
 import logging
-from typing import Optional, List, Dict, Any
+from pathlib import Path
+from typing import Optional, List, Dict, Any, Tuple
 
 from .config import Config
 from .session import SessionManager
-from .utils import BuildIdCache, extract_build_id, extract_sid_from_cookies
+from .utils import BuildIdCache, extract_build_id, extract_next_data
 from .exceptions import NotFoundError, ForbiddenError, StarAPIError
 
 logger = logging.getLogger("API")
+
+_CATEGORIES_CACHE_FILE = Path("storage/cache/auto_raise_categories.json")
+
 
 class StarAPI:
     """
@@ -108,17 +113,199 @@ class StarAPI:
 
     async def _get_user_page_props(self, user_id: int) -> dict:
         """
-        Получить pageProps профиля пользователя через Next.js Data API.
-        HTML /users/{id} часто блокируется антиботом (403), JSON — работает.
+        Получить pageProps профиля пользователя.
+        Starvell/Qrator может резать отдельные пути — пробуем несколько вариантов.
         """
+        if not self.session.get_sid():
+            try:
+                await self.get_user_info()
+            except Exception as sid_error:
+                logger.debug(f"Не удалось обновить SID перед профилем: {sid_error}")
+
         referer = f"{self.config.BASE_URL}/users/{user_id}"
-        data = await self._get_next_data(
-            f"users/{user_id}.json",
-            params=f"?user_id={user_id}",
+        attempts: List[Tuple[str, Optional[str]]] = [
+            (f"users/{user_id}.json", f"?user_id={user_id}"),
+            (f"user/{user_id}.json", f"?user_id={user_id}"),
+            (f"user/{user_id}.json", None),
+            ("account/offers.json", None),
+            ("account/sells.json", None),
+        ]
+
+        last_error: Optional[Exception] = None
+        for path, params in attempts:
+            try:
+                data = await self._get_next_data(
+                    path,
+                    params=params,
+                    include_sid=True,
+                    referer=referer,
+                )
+                page_props = data.get("pageProps", {})
+                if self._extract_user_categories(page_props) or page_props.get("userProfileOffers"):
+                    return page_props
+            except ForbiddenError as exc:
+                last_error = exc
+                logger.debug(f"Профиль через {path} заблокирован (403)")
+            except NotFoundError as exc:
+                last_error = exc
+                logger.debug(f"Профиль через {path} не найден (404)")
+
+        try:
+            return await self._get_user_page_props_html(user_id)
+        except Exception as exc:
+            last_error = exc
+            logger.debug(f"HTML профиля недоступен: {exc}")
+
+        if last_error:
+            raise last_error
+        raise ForbiddenError(f"Не удалось получить профиль пользователя {user_id}")
+
+    async def _get_user_page_props_html(self, user_id: int) -> dict:
+        """Fallback: парсинг __NEXT_DATA__ со страницы /users/{id}."""
+        html = await self.session.get_text(
+            f"{self.config.BASE_URL}/users/{user_id}",
+            referer=f"{self.config.BASE_URL}/",
+            headers={
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "cache-control": "max-age=0",
+                "upgrade-insecure-requests": "1",
+            },
             include_sid=True,
-            referer=referer,
         )
-        return data.get("pageProps", {})
+        data = extract_next_data(html)
+        return data.get("props", {}).get("pageProps", data.get("pageProps", {}))
+
+    def _load_categories_cache(self, user_id: int) -> Dict[int, List[int]]:
+        try:
+            if not _CATEGORIES_CACHE_FILE.exists():
+                return {}
+            payload = json.loads(_CATEGORIES_CACHE_FILE.read_text(encoding="utf-8"))
+            if str(payload.get("user_id")) != str(user_id):
+                return {}
+            cached = payload.get("game_categories") or {}
+            result: Dict[int, List[int]] = {}
+            for game_id, categories in cached.items():
+                gid = int(game_id)
+                result[gid] = [int(c) for c in categories]
+            return result
+        except Exception as exc:
+            logger.debug(f"Не удалось прочитать кэш категорий: {exc}")
+            return {}
+
+    def _save_categories_cache(self, user_id: int, game_categories: Dict[int, List[int]]) -> None:
+        try:
+            _CATEGORIES_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "user_id": user_id,
+                "game_categories": {str(k): v for k, v in game_categories.items()},
+            }
+            _CATEGORIES_CACHE_FILE.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            logger.debug(f"Не удалось сохранить кэш категорий: {exc}")
+
+    async def _categories_from_orders(self) -> Dict[int, List[int]]:
+        """Собрать game/category из истории заказов (REST API обычно не режется)."""
+        game_categories: Dict[int, List[int]] = {}
+        try:
+            orders = await self.get_all_orders()
+        except Exception as exc:
+            logger.debug(f"Не удалось получить заказы для fallback категорий: {exc}")
+            return game_categories
+
+        for order in orders:
+            details = order.get("offerDetails") or {}
+            game = details.get("game") or {}
+            category = details.get("category") or {}
+            game_id = game.get("id") or details.get("gameId") or order.get("gameId")
+            category_id = category.get("id") or details.get("categoryId") or order.get("categoryId")
+            if game_id and category_id:
+                game_categories.setdefault(int(game_id), [])
+                cid = int(category_id)
+                if cid not in game_categories[int(game_id)]:
+                    game_categories[int(game_id)].append(cid)
+        return game_categories
+
+    async def _categories_from_offer_ids(self, offer_ids: List[int]) -> Dict[int, List[int]]:
+        """Детали каждого лота через /offers/{id}.json — обход блокировки профиля."""
+        game_categories: Dict[int, List[int]] = {}
+        unique_ids = []
+        seen = set()
+        for offer_id in offer_ids:
+            if offer_id and offer_id not in seen:
+                seen.add(offer_id)
+                unique_ids.append(int(offer_id))
+
+        for offer_id in unique_ids[:40]:
+            try:
+                data = await self.get_offer(offer_id)
+                page_props = data.get("pageProps", {})
+                offer = page_props.get("offer") or {}
+                game_id = offer.get("gameId") or (offer.get("game") or {}).get("id")
+                category_id = offer.get("categoryId") or (offer.get("category") or {}).get("id")
+                if game_id and category_id:
+                    game_categories.setdefault(int(game_id), [])
+                    cid = int(category_id)
+                    if cid not in game_categories[int(game_id)]:
+                        game_categories[int(game_id)].append(cid)
+            except Exception as exc:
+                logger.debug(f"Не удалось получить offer {offer_id}: {exc}")
+            await asyncio.sleep(0.05)
+        return game_categories
+
+    async def _discover_offer_ids(self) -> List[int]:
+        """Собрать ID лотов из заказов для fallback."""
+        offer_ids: List[int] = []
+        seen = set()
+        try:
+            orders = await self.get_all_orders()
+            for order in orders:
+                for key in ("offerId", "offer_id"):
+                    oid = order.get(key)
+                    if oid and oid not in seen:
+                        seen.add(oid)
+                        offer_ids.append(int(oid))
+        except Exception as exc:
+            logger.debug(f"discover_offer_ids failed: {exc}")
+        return offer_ids
+
+    async def _resolve_user_categories(self, user_id: int) -> Dict[int, List[int]]:
+        """Полная цепочка получения категорий для авто-поднятия."""
+        try:
+            page_props = await self._get_user_page_props(user_id)
+            game_categories = self._extract_user_categories(page_props)
+            if game_categories:
+                self._save_categories_cache(user_id, game_categories)
+                return game_categories
+        except ForbiddenError:
+            logger.warning(
+                "⚠️ Профиль Starvell заблокирован антиботом — пробую fallback через заказы/кэш"
+            )
+        except Exception as exc:
+            logger.warning(f"⚠️ Не удалось получить профиль: {exc}")
+
+        cached = self._load_categories_cache(user_id)
+        if cached:
+            logger.info(f"📦 Категории из кэша: {len(cached)} игр")
+            return cached
+
+        from_orders = await self._categories_from_orders()
+        if from_orders:
+            logger.info(f"📦 Категории из заказов: {len(from_orders)} игр")
+            self._save_categories_cache(user_id, from_orders)
+            return from_orders
+
+        offer_ids = await self._discover_offer_ids()
+        if offer_ids:
+            from_offers = await self._categories_from_offer_ids(offer_ids)
+            if from_offers:
+                logger.info(f"📦 Категории из деталей лотов: {len(from_offers)} игр")
+                self._save_categories_cache(user_id, from_offers)
+                return from_offers
+
+        return {}
 
     def _extract_user_categories(self, page_props: dict) -> Dict[int, List[int]]:
         """Сгруппировать категории лотов пользователя по game_id."""
@@ -592,9 +779,8 @@ class StarAPI:
         Returns:
             dict: Словарь {game_id: [category_ids]} - все категории пользователя по играм
         """
-        logger.debug(f"🔍 Запрашиваю категории пользователя {user_id} через Next.js Data API...")
-        page_props = await self._get_user_page_props(user_id)
-        game_categories = self._extract_user_categories(page_props)
+        logger.debug(f"🔍 Запрашиваю категории пользователя {user_id}...")
+        game_categories = await self._resolve_user_categories(user_id)
 
         logger.debug(f"📦 Найдено игр: {len(game_categories)}")
         for game_id, cat_ids in game_categories.items():

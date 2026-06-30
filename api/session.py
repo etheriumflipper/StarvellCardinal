@@ -289,6 +289,7 @@ class SessionManager:
         url: str,
         referer: str = None,
         headers: Dict[str, str] = None,
+        include_sid: bool = False,
     ) -> str:
         """GET запрос с получением текста"""
         if self._session is None:
@@ -296,7 +297,7 @@ class SessionManager:
             
         retry_count = self.config.max_retries
         request_headers = self._get_headers(referer, headers)
-        cookies = self._get_cookies(False)
+        cookies = self._get_cookies(include_sid)
         
         last_error = None
         

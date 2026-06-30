@@ -174,7 +174,8 @@ class AutoRaiseService:
             
             if not game_categories:
                 logger.warning("📭 Не найдено категорий с лотами")
-                logger.warning(f"👉 Проверьте профиль: https://starvell.com/users/{user_id}")
+                logger.warning(f"👉 Starvell может блокировать профиль. Проверьте: https://starvell.com/users/{user_id}")
+                logger.warning("💡 Категории подтянутся из заказов/кэша, если лоты уже продавались")
                 return current_time + 600  # Попробуем через 10 минут
             
             # Проверяем, изменились ли категории
