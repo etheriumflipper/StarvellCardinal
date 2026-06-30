@@ -7,6 +7,7 @@ import logging
 from typing import Dict
 from pathlib import Path
 
+from api.utils import safe_int
 from bot.core.config import BotConfig
 
 
@@ -69,11 +70,11 @@ class AutoRestoreService:
                 lot_id = str(lot.get('id'))
                 lot_title = lot.get('title', lot_id)
                 is_active = lot.get('active', False)
-                current_amount = lot.get('amount', 0)
+                current_amount = safe_int(lot.get('amount'))
                 
                 # Сохраняем предыдущее состояние
                 prev_state = self.lot_states.get(lot_id, {})
-                prev_amount = prev_state.get('amount', current_amount)
+                prev_amount = safe_int(prev_state.get('amount', current_amount))
                 prev_active = prev_state.get('active', is_active)
                 
                 # Обновляем текущее состояние

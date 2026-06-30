@@ -9,6 +9,7 @@ from datetime import datetime
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from api.utils import safe_float
 from bot.core.config import BotConfig, get_config_manager
 from bot.core.services import StarvellService
 from bot.core.storage import Database
@@ -298,10 +299,8 @@ class BackgroundTasks:
                 # Получаем цену (API возвращает в копейках, конвертируем в рубли)
                 # basePrice - ваш доход, totalPrice - сколько заплатил покупатель
                 amount_kopecks = order.get("totalPrice") or order.get("basePrice") or order.get("price") or order.get("amount")
-                if amount_kopecks is not None:
-                    amount = amount_kopecks / 100  # Конвертируем копейки в рубли
-                else:
-                    amount = 0.0
+                amount = safe_float(amount_kopecks) / 100 if amount_kopecks is not None else 0.0
+                if amount_kopecks is None:
                     logger.warning(f"Не удалось получить цену для заказа {order_id[:8]}")
 
                 # Debug: логируем все поля цены

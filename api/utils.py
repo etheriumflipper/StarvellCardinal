@@ -73,3 +73,28 @@ def extract_sid_from_cookies(session) -> Optional[str]:
         return c.value if c else None
     except Exception:
         return None
+
+
+def safe_int(value, default: int = 0) -> int:
+    """Безопасно привести значение к int (API Starvell иногда отдаёт строки)."""
+    try:
+        if value is None or value == "":
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def safe_float(value, default: float = 0.0) -> float:
+    """Безопасно привести значение к float."""
+    try:
+        if value is None or value == "":
+            return default
+        if isinstance(value, dict):
+            for key in ("amount", "price", "totalPrice", "basePrice", "value"):
+                if key in value:
+                    return safe_float(value[key], default)
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default

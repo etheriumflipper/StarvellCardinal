@@ -43,7 +43,7 @@ class AutoTicketService:
             if self.CACHE_FILE.exists():
                 with open(self.CACHE_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    self._last_ticket_time = data.get('last_ticket_time', 0)
+                    self._last_ticket_time = float(data.get('last_ticket_time', 0) or 0)
                     
                     if self._last_ticket_time > 0:
                         last_time = datetime.fromtimestamp(self._last_ticket_time)

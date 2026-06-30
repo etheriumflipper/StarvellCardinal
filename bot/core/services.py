@@ -5,8 +5,13 @@
 import asyncio
 from typing import Optional, List, Dict, Any
 from api import StarAPI, StarAPIError
+from api.utils import safe_int
 from bot.core.config import BotConfig
 from bot.core.storage import Database
+
+
+def _chat_unread_count(chat: Dict[str, Any]) -> int:
+    return safe_int(chat.get("unreadMessageCount") or chat.get("unreadCount"))
 
 
 class StarvellService:
@@ -112,7 +117,7 @@ class StarvellService:
     async def get_unread_chats(self) -> List[Dict[str, Any]]:
         """Получить чаты с непрочитанными сообщениями"""
         chats = await self.get_chats()
-        return [chat for chat in chats if (chat.get("unreadMessageCount") or chat.get("unreadCount") or 0) > 0]
+        return [chat for chat in chats if _chat_unread_count(chat) > 0]
         
     async def get_messages(self, chat_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Получить сообщения из чата"""
@@ -261,7 +266,7 @@ class StarvellService:
     async def get_new_messages_count(self) -> int:
         """Получить количество новых сообщений"""
         chats = await self.get_unread_chats()
-        return sum((chat.get("unreadMessageCount") or chat.get("unreadCount") or 0) for chat in chats)
+        return sum(_chat_unread_count(chat) for chat in chats)
         
     async def check_new_messages(self) -> List[Dict[str, Any]]:
         """
@@ -301,7 +306,7 @@ class StarvellService:
         chats = await self.get_chats()
         
         # ОПТИМИЗАЦИЯ: фильтруем только чаты с непрочитанными сообщениями
-        unread_chats = [c for c in chats if (c.get("unreadMessageCount") or c.get("unreadCount") or 0) > 0]
+        unread_chats = [c for c in chats if _chat_unread_count(c) > 0]
         
         logger.debug(f"📬 Всего чатов: {len(chats)}, с непрочитанными: {len(unread_chats)}")
         
@@ -317,7 +322,7 @@ class StarvellService:
             
             # Получаем последнее известное сообщение из БД
             last_known_id = await self.db.get_last_message(chat_id)
-            unread_count = chat.get("unreadMessageCount") or chat.get("unreadCount") or 0
+            unread_count = _chat_unread_count(chat)
             
             # Получаем последние 10 сообщений чата
             messages = get_chat_messages(chat, limit=10)

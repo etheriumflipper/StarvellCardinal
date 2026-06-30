@@ -434,7 +434,10 @@ class BotConfig:
     
     @staticmethod
     def AUTO_BUMP_INTERVAL() -> int:
-        return _config_manager.get('AutoRaise', 'interval', 3600)
+        try:
+            return max(int(_config_manager.get('AutoRaise', 'interval', 3600)), 60)
+        except (TypeError, ValueError):
+            return 3600
     
     # === Авто-выдача ===
     @staticmethod
@@ -461,17 +464,26 @@ class BotConfig:
     @staticmethod
     def AUTO_TICKET_INTERVAL() -> int:
         """Интервал проверки авто-тикета (секунды)"""
-        return _config_manager.get('Starvell', 'autoTicketInterval', 3600)
+        try:
+            return max(int(_config_manager.get('Starvell', 'autoTicketInterval', 3600)), 60)
+        except (TypeError, ValueError):
+            return 3600
 
     @staticmethod
     def AUTO_TICKET_MAX_ORDERS() -> int:
         """Максимум заказов в одном тикете"""
-        return _config_manager.get('Starvell', 'autoTicketMaxOrders', 5)
+        try:
+            return max(int(_config_manager.get('Starvell', 'autoTicketMaxOrders', 5)), 1)
+        except (TypeError, ValueError):
+            return 5
 
     @staticmethod
     def AUTO_TICKET_ORDER_AGE() -> int:
         """Минимальный возраст заказа для авто-тикета (часы)"""
-        return _config_manager.get('Starvell', 'autoTicketOrderAge', 48)
+        try:
+            return max(int(_config_manager.get('Starvell', 'autoTicketOrderAge', 48)), 1)
+        except (TypeError, ValueError):
+            return 48
     
     @staticmethod
     def AUTO_TICKET_TYPE() -> str:

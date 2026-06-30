@@ -6,6 +6,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 from aiohttp import ClientTimeout
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -36,7 +37,7 @@ TELEGRAM_TIMEOUT = ClientTimeout(total=30, connect=10, sock_read=20)
 TELEGRAM_STARTUP_TIMEOUT = 30
 
 
-def _create_bot_session(proxy_url: str | None):
+def _create_bot_session(proxy_url: Optional[str]):
     """Создать сессию Telegram с таймаутом, чтобы старт не зависал навсегда."""
     if proxy_url:
         return AiohttpSession(proxy=proxy_url, timeout=TELEGRAM_TIMEOUT)

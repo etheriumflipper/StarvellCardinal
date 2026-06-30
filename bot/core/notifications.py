@@ -10,6 +10,7 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot.core.config import BotConfig
+from api.utils import safe_float
 
 logger = logging.getLogger(__name__)
 
@@ -703,7 +704,7 @@ class NotificationManager:
             order_data.get("amount") or 
             0
         )
-        plugin_order_data['amount'] = amount_kopecks / 100
+        plugin_order_data['amount'] = safe_float(amount_kopecks) / 100
         
         # Получаем данные лота
         lot = order_data.get("offerDetails") or order_data.get("listing") or {}
