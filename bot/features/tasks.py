@@ -135,7 +135,7 @@ class BackgroundTasks:
         """Проверка новых сообщений"""
         try:
             poll_result = await self.starvell.poll_chat_events()
-            if poll_result.primed:
+            if poll_result.primed and not poll_result.legacy_messages:
                 return
 
             if self.notifier and poll_result.events:
