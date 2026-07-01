@@ -69,15 +69,18 @@ class ConfigManager:
             },
             'Notifications': {
                 'checkInterval': '30',
-                'newMessages': 'true',
-                'newOrders': 'true',
-                'supportMessages': 'true',
+                'newMessages': 'false',
+                'newOrders': 'false',
+                'supportMessages': 'false',
                 'lotRestore': 'false',
                 'botStart': 'false',
                 'botStop': 'false',
                 'lotDeactivate': 'false',
                 'lotBump': 'false',
-                'autoTicket': 'true'
+                'autoTicket': 'false',
+                'orderConfirmed': 'false',
+                'review': 'false',
+                'autoResponses': 'false',
             },
             'AutoResponse': {
                 'orderConfirm': 'false',

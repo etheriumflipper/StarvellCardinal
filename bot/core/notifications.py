@@ -360,12 +360,15 @@ class NotificationManager:
         ])
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
-        
-        await self.notify_all_admins(
-            NotificationType.NEW_MESSAGE,
-            message,
-            keyboard=keyboard
-        )
+
+        if BotConfig.NOTIFY_NEW_MESSAGES():
+            await self.notify_all_admins(
+                NotificationType.NEW_MESSAGE,
+                message,
+                keyboard=keyboard
+            )
+        else:
+            logger.info(f"💬 [только лог] {display_name}: {content}")
         
         # Вызываем хэндлеры плагинов для новых сообщений
         plugin_message_data = plugin_data or {
@@ -458,12 +461,15 @@ class NotificationManager:
         ])
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
-        
-        await self.notify_all_admins(
-            NotificationType.SUPPORT_MESSAGE,
-            message,
-            keyboard=keyboard
-        )
+
+        if BotConfig.NOTIFY_SUPPORT_MESSAGES():
+            await self.notify_all_admins(
+                NotificationType.SUPPORT_MESSAGE,
+                message,
+                keyboard=keyboard
+            )
+        else:
+            logger.info(f"🛡️ [только лог] {role_name} {display_name}: {content[:120]}")
     
     async def notify_new_order(
         self,

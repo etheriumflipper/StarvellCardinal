@@ -1,67 +1,84 @@
-<div align="center">
-
-<!-- Banner -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a1a2e,50:16213e,100:0f3460&height=180&section=header&text=Starvell%20Cardinal&fontSize=42&fontColor=e94560&animation=fadeIn&fontAlignY=32&desc=Telegram-бот%20для%20автоматизации%20Starvell&descAlignY=55&descSize=16&descAlign=50" width="100%" />
-
-<br/>
-
-[![Version](https://img.shields.io/badge/version-0.3.0-e94560?style=for-the-badge&logo=semantic-release&logoColor=white)](version.py)
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](requirements.txt)
-[![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/starvellingbot)
-[![Starvell](https://img.shields.io/badge/Starvell-Automation-0f3460?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTEyIDJMMTUuMDkgOC4yNkwyMiAxMi4wOUwxNS4wOSAxNS43NEwxMiAyMkwxMiAxMi4wOUw1IDEyLjA5TDEyIDJaIi8+PC9zdmc+)](https://starvell.com)
-[![License](https://img.shields.io/badge/License-MIT-16213e?style=for-the-badge)](LICENSE)
-
-<p>
-  <a href="https://t.me/starvellingbot"><b>📢 Канал</b></a> •
-  <a href="https://t.me/knowtake"><b>👤 Автор</b></a> •
-  <a href="https://github.com/etheriumflipper/StarvellCardinal"><b>💻 GitHub</b></a>
+<p align="center">
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=28&duration=3000&pause=800&color=C41E3A&center=true&vCenter=true&width=520&lines=Starvell+Cardinal;Automation+for+Starvell.com;Plugins+%C2%B7+Logs+%C2%B7+API" alt="Typing SVG" />
 </p>
 
----
+<p align="center">
+  <img src="https://img.shields.io/badge/Cardinal-v0.3.7-C41E3A?style=flat-square&labelColor=1a0a0d" />
+  <img src="https://img.shields.io/badge/Python-3.8+-FFD700?style=flat-square&labelColor=1a0a0d&logo=python&logoColor=white" />
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-2d1b1f?style=flat-square&labelColor=1a0a0d" />
+  <img src="https://img.shields.io/badge/License-MIT-8B0000?style=flat-square&labelColor=1a0a0d" />
+</p>
 
-**Starvell Cardinal** — Telegram-бот для продавцов на [Starvell.com](https://starvell.com).  
-Автоподнятие лотов · автоответы · авто-выдача · вечный онлайн · плагины · автообновления.
+<p align="center">
+  <a href="https://t.me/starvellingbot"><img src="https://img.shields.io/badge/Канал-@starvellingbot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+  <a href="https://t.me/knowtake"><img src="https://img.shields.io/badge/Автор-@knowtake-C41E3A?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+  <a href="https://starvell.com"><img src="https://img.shields.io/badge/Starvell-marketplace-0f3460?style=for-the-badge" /></a>
+</p>
 
-<br/>
+<br>
 
-```ascii
-   ★  S T A R V E L L   C A R D I N A L  ★
-        автоматизация · плагины · онлайн
+```text
+      ╭──────────────────────────────────────────────────────────╮
+      │  ♜  CARDINAL · headless Starvell automation engine       │
+      │                                                          │
+      │   poll chats ──► plugins ──► orders ──► bump ──► logs   │
+      ╰──────────────────────────────────────────────────────────╯
 ```
 
-</div>
+> **Starvell Cardinal** — Telegram-панель управления для продавцов [Starvell.com](https://starvell.com).  
+> Читает ЛС покупателей, гоняет плагины, поднимает лоты — уведомления в **логах**, не в спаме TG.
 
----
+<br>
 
-## ⚡ Установка одной командой
+<table>
+<tr>
+<td width="33%" align="center">
+
+### 📡 Inbox
+FunPay-style **chat listener**  
+`lastMessage` API · plugin events
+
+</td>
+<td width="33%" align="center">
+
+### 🧩 Plugins
+`BIND_TO_NEW_MESSAGE`  
+`BIND_TO_NEW_ORDER` · hooks
+
+</td>
+<td width="33%" align="center">
+
+### 🛡️ Anti-bot
+Next.js fallback · rate limit  
+HTTP keep-alive
+
+</td>
+</tr>
+</table>
+
+<br>
+
+## ⚡ Установка
 
 ```bash
 wget https://raw.githubusercontent.com/etheriumflipper/StarvellCardinal/main/install.sh -O install.sh && bash install.sh
 ```
 
-## 🚀 Быстрый старт
-
-<table>
-<tr>
-<td width="50%">
-
-### 🐧 Linux / VPS
+<details>
+<summary><b>🐧 Linux / VPS</b></summary>
 
 ```bash
 git clone https://github.com/etheriumflipper/StarvellCardinal.git
 cd StarvellCardinal
 sudo bash install.sh
+sudo systemctl enable --now starvell-cardinal
+sudo journalctl -u starvell-cardinal -f    # логи в реальном времени
 ```
 
-```bash
-sudo systemctl status starvell-cardinal
-sudo journalctl -u starvell-cardinal -f
-```
+</details>
 
-</td>
-<td width="50%">
-
-### 🪟 Windows
+<details>
+<summary><b>🪟 Windows</b></summary>
 
 ```bat
 git clone https://github.com/etheriumflipper/StarvellCardinal.git
@@ -70,71 +87,102 @@ Setup.bat
 Start.bat
 ```
 
-</td>
-</tr>
-</table>
+</details>
 
-## 🧠 Возможности
+<br>
 
-| Функция | Описание |
-|---------|----------|
-| 📦 **Авто-поднятие** | Bump лотов по всем категориям автоматически |
-| 💬 **Автоответы** | Ответы на сообщения покупателей |
-| 🎁 **Авто-выдача** | Выдача товаров по шаблонам |
-| 🟢 **Вечный онлайн** | HTTP heartbeat + Socket.IO (если доступен) |
-| 🧩 **Плагины** | Расширяемая система модулей |
-| 🔄 **Автообновления** | Уведомления и `/update` из GitHub |
+## 🎛️ Модули
 
-## 🛡️ Антибот Starvell (v0.3.0)
+| | Модуль | Что делает |
+|:---:|:---|:---|
+| ⤴️ | **Auto-raise** | Поднятие лотов по категориям (fallback через заказы, если профиль 403) |
+| 💬 | **Chat listener** | Ловит ЛС покупателей — даже когда Starvell отдаёт только `lastMessage` |
+| 🎁 | **Auto-delivery** | Выдача товаров по шаблонам |
+| 🤖 | **Auto-response** | Ответы на новые заказы |
+| 🟢 | **Keep-alive** | Вечный онлайн (HTTP heartbeat, Socket.IO fallback) |
+| 🧩 | **Plugins** | Python-модули в `plugins/` — [документация](docs/PLUGINS_API.md) |
+| 🔄 | **Auto-update** | `/update` с GitHub Releases |
 
-Starvell усилил защиту (QRATOR). Cardinal адаптирован:
+<br>
 
-- ✅ Запросы профиля через **Next.js Data API** вместо HTML `/users/` (фикс 403)
-- ✅ **Browser-like headers** + rate limiter для всех запросов
-- ✅ **HTTP heartbeat** как основной метод онлайна (Socket.IO может быть 404)
-- ✅ Умная обработка **Telegram flood control** при смене имени бота
+## 🧩 Плагины за 60 секунд
 
-## 🧷 Первый запуск
+```python
+# plugins/hello.py
+NAME, VERSION, DESCRIPTION, AUTHOR = "Hello", "1.0.0", "Test", "@knowtake"
+UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
-1. `Bot Token` от `@BotFather`
-2. Пароль для доступа к боту
-3. `session_cookie` от Starvell.com
+async def on_new_message(data, starvell_service=None, **kwargs):
+  if data.get("content", "").lower() == "привет":
+    await starvell_service.send_message(data["chat_id"], "Привет! Cardinal на связи.")
 
-Мастер создаст `configs/_main.cfg` и запустит сервис.
+BIND_TO_NEW_MESSAGE = [on_new_message]
+```
+
+Положи файл в `plugins/` → `systemctl restart starvell-cardinal` → пиши в ЛС на Starvell → смотри `journalctl -f`.
+
+📚 [API Reference](docs/API_REFERENCE.md) · [Plugins API](docs/PLUGINS_API.md)
+
+<br>
+
+## 📋 Логи вместо TG-спама
+
+По умолчанию **уведомления только в journal**, Telegram не засоряется:
+
+```ini
+# configs/_main.cfg
+[Notifications]
+newMessages = 0
+newOrders = 0
+```
+
+Включить TG обратно: `/notifications` в боте или `newMessages = 1`.
+
+<br>
 
 ## 🗂️ Структура
 
 ```text
 StarvellCardinal/
-├── main.py              # Точка входа
-├── api/                 # Starvell API клиент
-├── bot/                 # Telegram-бот
-├── configs/             # Конфигурация
-├── docs/                # Документация
-└── plugins/             # Плагины (пусто в чистой версии)
+├── main.py
+├── api/              # Starvell client (Next.js + REST)
+├── bot/
+│   ├── core/         # chat_listener, notifications, services
+│   ├── features/     # auto_raise, keep_alive, tasks
+│   └── plugins/      # plugin manager
+├── configs/_main.cfg
+├── docs/             # API_REFERENCE · PLUGINS_API
+└── plugins/          # твои .py модули
 ```
 
-## 🔄 Автообновления
+<br>
 
-При выходе новой версии админы получают уведомление с кнопкой **«Обновить сейчас»** или командой `/update`.
+## 📦 Changelog (recent)
 
-> Перед релизом повышайте `VERSION` в [version.py](version.py).
+| Ver | Highlights |
+|:---:|:---|
+| **0.3.7** | TG-уведомления off по умолчанию · только логи |
+| **0.3.6** | Fix `lastMessage` DM detection · unread on startup |
+| **0.3.5** | FunPay-style chat events для плагинов |
+| **0.3.4** | Auto-raise 403 fallback chain |
+| **0.3.0** | Anti-bot · rebrand @knowtake |
 
-## 🔗 Ссылки
+<br>
 
-| | |
-|---|---|
-| 👤 Автор | [@knowtake](https://t.me/knowtake) |
-| 📢 Канал | [@starvellingbot](https://t.me/starvellingbot) |
-| 💻 GitHub | [etheriumflipper/StarvellCardinal](https://github.com/etheriumflipper/StarvellCardinal) |
-| 🌍 Starvell | [starvell.com](https://starvell.com) |
+## 🔧 Первый запуск
 
-## 📄 Лицензия
+1. **Bot Token** — `@BotFather`
+2. **Пароль** — для входа в панель бота
+3. **session_cookie** — из браузера на starvell.com
 
-[MIT](LICENSE) © [@knowtake](https://t.me/knowtake)
+Мастер `first_setup.py` создаст конфиг и systemd-сервис.
 
----
+<br>
 
-<div align="center">
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a1a2e,50:16213e,100:0f3460&height=100&section=footer&fontSize=14&fontColor=e94560&text=Made%20with%20%E2%9D%A4%20by%20@knowtake" width="100%" />
-</div>
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=soft&color=C41E3A:1a0a0d&height=120&section=footer&text=♜%20Starvell%20Cardinal%20·%20@knowtake&fontSize=22&fontColor=FFD700" width="90%" />
+</p>
+
+<p align="center">
+  <sub>MIT © <a href="https://t.me/knowtake">@knowtake</a> · <a href="https://t.me/starvellingbot">@starvellingbot</a></sub>
+</p>
