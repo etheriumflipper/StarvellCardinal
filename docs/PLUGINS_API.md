@@ -139,6 +139,72 @@ async def on_new_message(message_data: dict, starvell_service=None, *args, **kwa
 BIND_TO_NEW_MESSAGE = [on_new_message]
 ```
 
+#### `BIND_TO_INIT_MESSAGE`
+Вызывается при первом опросе чатов после запуска (прогрев кэша, без уведомлений).
+
+```python
+async def on_init_message(event, starvell_service=None, bot=None, **kwargs):
+    chat = event.chat  # ChatShortcut
+    print(f"Известный чат: {chat.name} ({chat.id})")
+
+BIND_TO_INIT_MESSAGE = [on_init_message]
+```
+
+#### `BIND_TO_MESSAGES_LIST_CHANGED`
+Список чатов изменился (новое сообщение в одном из чатов).
+
+```python
+async def on_chats_changed(event, **kwargs):
+    print("Список чатов Starvell обновился")
+
+BIND_TO_MESSAGES_LIST_CHANGED = [on_chats_changed]
+```
+
+#### `BIND_TO_LAST_CHAT_MESSAGE_CHANGED`
+Изменилось превью последнего сообщения в чате (до загрузки полной истории).
+
+```python
+async def on_last_message_changed(event, **kwargs):
+    chat = event.chat
+    print(f"Новая активность в чате {chat.name}: {chat.last_message_text[:50]}")
+
+BIND_TO_LAST_CHAT_MESSAGE_CHANGED = [on_last_message_changed]
+```
+
+**FunPay-style обработчик** (с объектом `event`):
+
+```python
+async def on_new_message(bot, event):
+    """Аналог FunPay Cardinal: bot + NewMessageEvent."""
+    msg = event.message
+    chat = event.chat
+    print(f"{msg.author_username or msg.author_id}: {msg.content}")
+    await bot.starvell.send_message(msg.chat_id, "Принято!")  # если есть обёртка
+
+BIND_TO_NEW_MESSAGE = [on_new_message]
+```
+
+**Расширенный `message_data`:**
+
+```python
+{
+    'chat_id': str,
+    'author': str,              # ID отправителя
+    'author_username': str,     # никнейм
+    'author_roles': list,
+    'content': str,
+    'message_id': str,
+    'created_at': str,
+    'is_own': bool,
+    'companion_id': str,        # ID собеседника в ЛС
+    'companion_username': str,
+    'order_id': str,            # если чат привязан к заказу
+    'unread': bool,
+    'chat': dict,               # сырой объект чата API
+    'message': dict,            # сырой объект сообщения API
+}
+```
+
 #### `BIND_TO_NEW_ORDER`
 Вызывается при получении нового заказа.
 

@@ -392,7 +392,61 @@ class StarAPI:
         Returns:
             dict: Данные о чатах пользователя
         """
-        return await self._get_next_data("chat.json")
+        return await self._get_next_data("chat.json", include_sid=True)
+
+    async def get_chat(self, chat_id: str) -> Dict[str, Any]:
+        """
+        Получить полные данные чата с историей сообщений.
+        Пробует несколько Next.js маршрутов и REST fallback.
+        """
+        referer = f"{self.config.BASE_URL}/chat/{chat_id}"
+        attempts = [
+            (f"chat/{chat_id}.json", f"?chatId={chat_id}"),
+            (f"chat/{chat_id}.json", f"?id={chat_id}"),
+            (f"chats/{chat_id}.json", None),
+            (f"chat/{chat_id}.json", None),
+        ]
+        for path, params in attempts:
+            try:
+                data = await self._get_next_data(
+                    path,
+                    params=params,
+                    include_sid=True,
+                    referer=referer,
+                )
+                page_props = data.get("pageProps", {})
+                if page_props.get("messages") or page_props.get("chat"):
+                    return page_props
+            except Exception as exc:
+                logger.debug(f"get_chat {path} не сработал: {exc}")
+
+        rest_endpoints = [
+            (f"{self.config.API_URL}/chats/{chat_id}/messages", None),
+            (f"{self.config.API_URL}/messages", {"chatId": chat_id}),
+            (f"{self.config.API_URL}/messages/list", {"chatId": chat_id}),
+        ]
+        for url, params in rest_endpoints:
+            try:
+                if params:
+                    query = "&".join(f"{k}={v}" for k, v in params.items())
+                    full_url = f"{url}?{query}"
+                else:
+                    full_url = url
+                data = await self.session.get_json(
+                    full_url,
+                    referer=referer,
+                    include_sid=True,
+                )
+                if isinstance(data, list) and data:
+                    return {"messages": data, "chat": {"id": chat_id}}
+                if isinstance(data, dict):
+                    messages = data.get("messages") or data.get("items") or data.get("data")
+                    if messages:
+                        return {"messages": messages, "chat": data.get("chat") or {"id": chat_id}}
+            except Exception as exc:
+                logger.debug(f"get_chat REST {url} не сработал: {exc}")
+
+        return {}
         
     async def get_messages(self, chat_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         """
@@ -405,6 +459,10 @@ class StarAPI:
         Returns:
             list: Список сообщений
         """
+        messages = await self.get_chat_messages(chat_id, limit=limit)
+        if messages:
+            return messages
+
         def message_sort_key(message: Dict[str, Any]) -> str:
             for key in ("createdAt", "created_at", "timestamp", "sentAt", "updatedAt", "date", "id"):
                 value = message.get(key)
@@ -412,30 +470,40 @@ class StarAPI:
                     return str(value)
             return ""
 
-        # Starvell API не имеет прямого endpoint для получения сообщений
-        # Вместо этого получаем сообщения через список чатов
         try:
             chats_data = await self.get_chats()
-
-            # Ищем нужный чат
             for chat in chats_data.get("pageProps", {}).get("chats", []):
                 if chat.get("id") == chat_id:
-                    # Нормализуем порядок: новые сообщения должны идти первыми.
                     messages = chat.get("messages", [])
                     if not isinstance(messages, list):
                         return []
-
                     sorted_messages = sorted(messages, key=message_sort_key, reverse=True)
                     return sorted_messages[:limit]
-
-            # Если чат не найден, возвращаем пустой список
             return []
-
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Ошибка получения сообщений для чата {chat_id}: {e}")
             return []
+
+    async def get_chat_messages(self, chat_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Получить историю сообщений чата (с загрузкой полной страницы чата)."""
+        def message_sort_key(message: Dict[str, Any]) -> str:
+            for key in ("createdAt", "created_at", "timestamp", "sentAt", "updatedAt", "date", "id"):
+                value = message.get(key)
+                if value is not None:
+                    return str(value)
+            return ""
+
+        page_props = await self.get_chat(chat_id)
+        messages = page_props.get("messages") or []
+        chat_obj = page_props.get("chat") or {}
+        if not messages and isinstance(chat_obj, dict):
+            messages = chat_obj.get("messages") or []
+
+        if not isinstance(messages, list):
+            return []
+
+        sorted_messages = sorted(messages, key=message_sort_key, reverse=True)
+        return sorted_messages[:limit]
         
     async def send_message(self, chat_id: str, content: str) -> Dict[str, Any]:
         """

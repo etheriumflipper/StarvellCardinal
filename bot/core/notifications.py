@@ -297,7 +297,8 @@ class NotificationManager:
         author: str,
         content: str,
         message_id: Optional[str] = None,
-        author_nickname: Optional[str] = None
+        author_nickname: Optional[str] = None,
+        plugin_data: Optional[Dict[str, Any]] = None,
     ):
         """Уведомление о новом сообщении"""
         from bot.keyboards.keyboards import get_select_template_menu
@@ -367,13 +368,14 @@ class NotificationManager:
         )
         
         # Вызываем хэндлеры плагинов для новых сообщений
-        # Передаём реальный author ID, а не display_name
-        await self._run_plugin_handlers_for_new_message(
-            chat_id,
-            author,  # Передаём оригинальный ID автора
-            content,
-            message_id
-        )
+        plugin_message_data = plugin_data or {
+            "chat_id": chat_id,
+            "author": author,
+            "author_username": author_nickname,
+            "content": content,
+            "message_id": message_id or "",
+        }
+        await self._run_plugin_handlers_for_new_message(plugin_message_data)
     
     async def notify_support_message(
         self,
@@ -741,27 +743,108 @@ class NotificationManager:
             except Exception as e:
                 logger.error(f"Ошибка выполнения хэндлера плагина {handler.__name__}: {e}", exc_info=True)
     
-    async def _run_plugin_handlers_for_new_message(self, chat_id: str, author: str, content: str, message_id: Optional[str] = None):
+    async def dispatch_chat_events(self, events: List[Any]) -> None:
+        """Раздать события чатов плагинам (FunPay Cardinal-style)."""
+        if not self.plugin_manager or not events:
+            return
+
+        from bot.core.chat_events import (
+            ChatsListChangedEvent,
+            InitialChatEvent,
+            LastChatMessageChangedEvent,
+            NewMessageEvent,
+            build_chat_shortcut,
+            build_chat_message,
+        )
+
+        import asyncio
+        import inspect
+
+        for event in events:
+            if isinstance(event, InitialChatEvent):
+                handlers = self.plugin_manager.init_message_handlers
+            elif isinstance(event, ChatsListChangedEvent):
+                handlers = self.plugin_manager.messages_list_changed_handlers
+            elif isinstance(event, LastChatMessageChangedEvent):
+                handlers = self.plugin_manager.last_chat_message_changed_handlers
+            elif isinstance(event, NewMessageEvent):
+                continue
+            else:
+                continue
+
+            for handler in handlers:
+                try:
+                    plugin_uuid = getattr(handler, "plugin_uuid", None)
+                    if plugin_uuid and plugin_uuid in self.plugin_manager.plugins:
+                        if not self.plugin_manager.plugins[plugin_uuid].enabled:
+                            continue
+
+                    params = list(inspect.signature(handler).parameters.keys())
+                    if len(params) >= 2 and params[0] in ("bot", "cardinal") and params[1] == "event":
+                        if asyncio.iscoroutinefunction(handler):
+                            await handler(self.bot, event)
+                        else:
+                            handler(self.bot, event)
+                    else:
+                        kwargs = {
+                            "starvell_service": self.starvell_service,
+                            "bot": self.bot,
+                            "event": event,
+                        }
+                        if asyncio.iscoroutinefunction(handler):
+                            await handler(event, **kwargs)
+                        else:
+                            handler(event, **kwargs)
+                except Exception as e:
+                    logger.error(
+                        f"Ошибка chat-event хэндлера {handler.__name__}: {e}",
+                        exc_info=True,
+                    )
+
+    async def _run_plugin_handlers_for_new_message(
+        self,
+        plugin_message_data: Dict[str, Any],
+    ):
         """Вызов хэндлеров плагинов для новых сообщений"""
         if not self.plugin_manager:
             return
 
-        logger.debug(f"Вызов плагинов для сообщения: chat_id={chat_id}, author={author}, content={content[:50]}")
+        chat_id = plugin_message_data.get("chat_id", "")
+        author = plugin_message_data.get("author", "")
+        content = plugin_message_data.get("content", "")
+        logger.debug(
+            f"Вызов плагинов для сообщения: chat_id={chat_id}, author={author}, content={content[:50]}"
+        )
 
-        # Подготавливаем данные для плагинов
-        plugin_message_data = {
-            'chat_id': chat_id,
-            'author': author,
-            'content': content,
-            'message_id': message_id or ''
-        }
-
-        # Вызываем хэндлеры плагинов асинхронно
         import asyncio
+        import inspect
+        from bot.core.chat_events import NewMessageEvent, build_chat_shortcut, build_chat_message
+
+        event = None
+        my_user_id = ""
+        if self.starvell_service:
+            try:
+                info = self.starvell_service.last_user_info or await self.starvell_service.get_user_info()
+                my_user_id = str((info.get("user") or {}).get("id", ""))
+            except Exception:
+                my_user_id = ""
+
+        if plugin_message_data.get("message") and plugin_message_data.get("chat"):
+            try:
+                chat_raw = plugin_message_data["chat"]
+                msg_raw = plugin_message_data["message"]
+                shortcut = build_chat_shortcut(chat_raw)
+                message = build_chat_message(chat_raw, msg_raw, my_user_id)
+                message.author_id = str(plugin_message_data.get("author", message.author_id))
+                message.content = plugin_message_data.get("content", message.content)
+                message.id = str(plugin_message_data.get("message_id", message.id))
+                event = NewMessageEvent(message, shortcut)
+            except Exception:
+                event = None
+
         for handler in self.plugin_manager.new_message_handlers:
             try:
-                # Проверяем, включён ли плагин
-                plugin_uuid = getattr(handler, 'plugin_uuid', None)
+                plugin_uuid = getattr(handler, "plugin_uuid", None)
                 if plugin_uuid and plugin_uuid in self.plugin_manager.plugins:
                     if not self.plugin_manager.plugins[plugin_uuid].enabled:
                         logger.debug(f"Плагин {plugin_uuid} отключён, пропускаем")
@@ -769,11 +852,27 @@ class NotificationManager:
 
                 logger.debug(f"Вызов обработчика {handler.__name__} из плагина {plugin_uuid}")
 
-                # Вызываем асинхронный хэндлер с передачей starvell_service и bot
-                if asyncio.iscoroutinefunction(handler):
-                    await handler(plugin_message_data, starvell_service=self.starvell_service, bot=self.bot)
+                params = list(inspect.signature(handler).parameters.keys())
+                if event and len(params) >= 2 and params[0] in ("bot", "cardinal") and params[1] == "event":
+                    if asyncio.iscoroutinefunction(handler):
+                        await handler(self.bot, event)
+                    else:
+                        handler(self.bot, event)
                 else:
-                    handler(plugin_message_data, starvell_service=self.starvell_service, bot=self.bot)
+                    if asyncio.iscoroutinefunction(handler):
+                        await handler(
+                            plugin_message_data,
+                            starvell_service=self.starvell_service,
+                            bot=self.bot,
+                            event=event,
+                        )
+                    else:
+                        handler(
+                            plugin_message_data,
+                            starvell_service=self.starvell_service,
+                            bot=self.bot,
+                            event=event,
+                        )
             except Exception as e:
                 logger.error(f"Ошибка выполнения хэндлера плагина {handler.__name__}: {e}", exc_info=True)
 

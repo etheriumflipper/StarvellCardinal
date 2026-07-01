@@ -61,6 +61,9 @@ class PluginManager:
         self.stop_handlers: list[Callable] = []
         self.new_order_handlers: list[Callable] = []
         self.new_message_handlers: list[Callable] = []
+        self.init_message_handlers: list[Callable] = []
+        self.messages_list_changed_handlers: list[Callable] = []
+        self.last_chat_message_changed_handlers: list[Callable] = []
         self.settings_handlers: Dict[str, list[Callable]] = {}  # {uuid: [handler]}
         
     def load_disabled_plugins(self):
@@ -252,6 +255,21 @@ class PluginManager:
                 for handler in module.BIND_TO_NEW_MESSAGE:
                     handler.plugin_uuid = uuid
                     self.new_message_handlers.append(handler)
+
+            if hasattr(module, 'BIND_TO_INIT_MESSAGE'):
+                for handler in module.BIND_TO_INIT_MESSAGE:
+                    handler.plugin_uuid = uuid
+                    self.init_message_handlers.append(handler)
+
+            if hasattr(module, 'BIND_TO_MESSAGES_LIST_CHANGED'):
+                for handler in module.BIND_TO_MESSAGES_LIST_CHANGED:
+                    handler.plugin_uuid = uuid
+                    self.messages_list_changed_handlers.append(handler)
+
+            if hasattr(module, 'BIND_TO_LAST_CHAT_MESSAGE_CHANGED'):
+                for handler in module.BIND_TO_LAST_CHAT_MESSAGE_CHANGED:
+                    handler.plugin_uuid = uuid
+                    self.last_chat_message_changed_handlers.append(handler)
             
             if hasattr(module, 'BIND_TO_SETTINGS_PAGE'):
                 self.settings_handlers[uuid] = module.BIND_TO_SETTINGS_PAGE

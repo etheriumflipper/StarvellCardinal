@@ -33,7 +33,6 @@ class BackgroundTasks:
         self.scheduler = AsyncIOScheduler()
         self._seen_messages: dict[str, set[str]] = {}  # chat_id -> set of message_ids
         self._welcomed_chats: set[str] = self._load_welcomed_chats()  # чаты, которым уже отправлено приветствие
-        self._first_check_messages = True  # Флаг первой проверки после запуска
         self._first_check_orders = True  # Флаг первой проверки заказов после запуска
         self._auto_ticket_first_run_done = False  # Флаг первого запуска авто-тикетов
         
@@ -135,7 +134,14 @@ class BackgroundTasks:
     async def _check_new_messages(self):
         """Проверка новых сообщений"""
         try:
-            new_messages = await self.starvell.check_new_messages()
+            poll_result = await self.starvell.poll_chat_events()
+            if poll_result.primed:
+                return
+
+            if self.notifier and poll_result.events:
+                await self.notifier.dispatch_chat_events(poll_result.events)
+
+            new_messages = poll_result.legacy_messages
             
             if not self.notifier:
                 logger.warning("Менеджер уведомлений не инициализирован")
@@ -150,10 +156,11 @@ class BackgroundTasks:
                 chat_id = str(msg_data.get("chat_id", ""))
                 message = msg_data.get("message", {})
                 chat = msg_data.get("chat", {})
+                plugin_data = msg_data.get("plugin_data") or {}
                 
-                author_id = message.get("authorId", "N/A")
-                content = message.get("content") or message.get("text", "")
-                message_id = message.get("id")
+                author_id = message.get("authorId", plugin_data.get("author", "N/A"))
+                content = message.get("content") or message.get("text", plugin_data.get("content", ""))
+                message_id = message.get("id") or plugin_data.get("message_id")
                 
                 # Пропускаем сообщения без контента
                 if not content:
@@ -167,14 +174,14 @@ class BackgroundTasks:
                         logger.debug(f"Сообщение от пользователя {author_id} игнорируется (в черном списке)")
                     continue
                 
-                # Получаем username и роли напрямую из данных сообщения
-                # API возвращает message.author.username и message.author.roles
-                author_username = None
-                author_roles = []
+                author_username = plugin_data.get("author_username")
+                author_roles = plugin_data.get("author_roles") or []
                 author_data = message.get("author", {})
                 if author_data:
-                    author_username = author_data.get("username") or author_data.get("name")
-                    author_roles = author_data.get("roles", [])
+                    if not author_username:
+                        author_username = author_data.get("username") or author_data.get("name")
+                    if not author_roles:
+                        author_roles = author_data.get("roles", [])
                 
                 # Если нет в сообщении, пробуем найти в participants чата
                 if not author_username and chat:
@@ -224,7 +231,8 @@ class BackgroundTasks:
                         author=str(author_id),
                         content=content,
                         message_id=str(message_id) if message_id else None,
-                        author_nickname=author_username  
+                        author_nickname=author_username,
+                        plugin_data=plugin_data or None,
                     )
                 
                 # Запоминаем это сообщение
@@ -241,6 +249,14 @@ class BackgroundTasks:
                 role_prefix = f"[{', '.join(author_roles)}] " if author_roles else ""
                 display_name = author_username or author_id
                 logger.info(f"📩 Новое сообщение от {role_prefix}{display_name}: {content[:50]}...")
+
+            if new_messages and BotConfig.AUTO_READ_ENABLED():
+                seen_chats = set()
+                for item in new_messages:
+                    cid = item.get("chat_id")
+                    if cid and cid not in seen_chats:
+                        seen_chats.add(cid)
+                        await self.starvell.mark_chat_as_read(cid)
                     
         except Exception as e:
             logger.error(f"Ошибка при проверке новых сообщений: {e}", exc_info=True)

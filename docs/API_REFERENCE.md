@@ -232,6 +232,26 @@ else:
 
 ---
 
+#### `send_message_by_user_id(user_id: str, content: str) -> dict`
+
+Отправить сообщение пользователю по ID (ищет существующий чат).
+
+```python
+await starvell_service.send_message_by_user_id("142989", "Привет!")
+```
+
+---
+
+#### `get_chat_messages(chat_id: str, limit: int = 50) -> list[dict]`
+
+Загрузить историю сообщений чата (с подгрузкой полной страницы `/chat/{id}`).
+
+```python
+messages = await starvell_service.get_chat_messages(chat_id, limit=30)
+```
+
+---
+
 ## Структуры данных событий
 
 ### order_data (BIND_TO_NEW_ORDER)
