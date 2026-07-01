@@ -4,7 +4,7 @@
 
 import os
 
-VERSION = "0.3.5"
+VERSION = "0.3.6"
 REPOSITORY_URL = "https://github.com/etheriumflipper/StarvellCardinal.git"
 VERSION_URL = os.getenv(
     "STARVELL_VERSION_URL",

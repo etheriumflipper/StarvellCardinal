@@ -106,7 +106,34 @@ def sort_messages(messages: List[Dict[str, Any]], newest_first: bool = False) ->
     return ordered
 
 
-def extract_companion(chat: Dict[str, Any]) -> Dict[str, Any]:
+def extract_last_message_dict(chat: Dict[str, Any]) -> Dict[str, Any]:
+    """Последнее сообщение чата (Starvell кладёт его в lastMessage, не в messages[])."""
+    last_msg = chat.get("lastMessage")
+    if isinstance(last_msg, dict):
+        return last_msg
+
+    messages = chat.get("messages") or []
+    if isinstance(messages, list) and messages:
+        return sort_messages(messages, newest_first=True)[0]
+
+    if isinstance(last_msg, str) and last_msg:
+        return {"content": last_msg}
+    return {}
+
+
+def extract_chat_messages(chat: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Сообщения из объекта чата: messages[] или одиночный lastMessage."""
+    embedded = chat.get("messages") or []
+    if isinstance(embedded, list) and embedded:
+        return sort_messages(embedded)
+
+    last_msg = extract_last_message_dict(chat)
+    if last_msg.get("id") or last_msg.get("content") or last_msg.get("text"):
+        return [last_msg]
+    return []
+
+
+def extract_companion(chat: Dict[str, Any], my_user_id: str = "") -> Dict[str, Any]:
     companion = chat.get("companion") or {}
     if companion:
         return companion
@@ -115,22 +142,39 @@ def extract_companion(chat: Dict[str, Any]) -> Dict[str, Any]:
     for member in members:
         if isinstance(member, dict) and member.get("id"):
             return member
+
+    last_msg = extract_last_message_dict(chat)
+    for role in ("buyer", "seller", "admin"):
+        user = last_msg.get(role)
+        if isinstance(user, dict) and user.get("id"):
+            return user
+
+    for key in ("interlocutor", "user", "companionUser"):
+        user = chat.get(key)
+        if isinstance(user, dict) and user.get("id"):
+            return user
+
+    author_id = str(last_msg.get("authorId") or "")
+    if author_id and my_user_id and author_id != my_user_id:
+        return {"id": author_id}
     return {}
 
 
-def build_chat_shortcut(chat: Dict[str, Any]) -> ChatShortcut:
-    companion = extract_companion(chat)
-    messages = chat.get("messages") or []
-    latest = sort_messages(messages, newest_first=True)[0] if messages else {}
+def build_chat_shortcut(chat: Dict[str, Any], my_user_id: str = "") -> ChatShortcut:
+    companion = extract_companion(chat, my_user_id)
+    last_msg = extract_last_message_dict(chat)
     preview = (
-        chat.get("lastMessage")
+        last_msg.get("content")
+        or last_msg.get("text")
         or chat.get("lastMessageText")
         or chat.get("last_message_text")
-        or latest.get("content")
-        or latest.get("text")
         or ""
     )
     order = chat.get("order") or {}
+    if not order.get("id"):
+        order_meta = (last_msg.get("metadata") or {})
+        if order_meta.get("orderId"):
+            order = {"id": order_meta.get("orderId")}
     unread = int(chat.get("unreadMessageCount") or chat.get("unreadCount") or 0) > 0
     return ChatShortcut(
         id=str(chat.get("id", "")),
@@ -140,7 +184,7 @@ def build_chat_shortcut(chat: Dict[str, Any]) -> ChatShortcut:
         companion_id=str(companion.get("id")) if companion.get("id") else None,
         companion_username=companion.get("username") or companion.get("name"),
         order_id=str(order.get("id")) if order.get("id") else None,
-        last_message_id=latest.get("id"),
+        last_message_id=str(last_msg.get("id")) if last_msg.get("id") else None,
         raw=chat,
     )
 
@@ -156,7 +200,7 @@ def build_chat_message(
     author_roles = author_data.get("roles") or []
 
     if not author_username:
-        companion = extract_companion(chat)
+        companion = extract_companion(chat, my_user_id)
         if author_id and str(companion.get("id")) == author_id:
             author_username = companion.get("username") or companion.get("name")
 

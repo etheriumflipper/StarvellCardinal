@@ -15,7 +15,8 @@ from bot.core.chat_events import (
     NewMessageEvent,
     build_chat_message,
     build_chat_shortcut,
-    message_sort_key,
+    extract_chat_messages,
+    extract_last_message_dict,
     message_to_plugin_data,
     sort_messages,
 )
@@ -47,7 +48,7 @@ class ChatListener:
             if not chat_id:
                 continue
 
-            shortcut = build_chat_shortcut(chat)
+            shortcut = build_chat_shortcut(chat, my_user_id)
             prev = self._known_chats.get(chat_id)
 
             if self._first_request:
@@ -56,11 +57,11 @@ class ChatListener:
                 self._known_chats[chat_id] = shortcut
                 continue
 
-            if prev is None and not self._first_request:
+            if prev is None:
                 list_changed = True
                 changed_chats.append(shortcut)
                 result.events.append(LastChatMessageChangedEvent(shortcut))
-            elif prev and (
+            elif (
                 prev.last_message_id != shortcut.last_message_id
                 or prev.last_message_text != shortcut.last_message_text
                 or prev.unread != shortcut.unread
@@ -89,18 +90,20 @@ class ChatListener:
         for shortcut in changed_chats:
             chat = shortcut.raw
             chat_id = shortcut.id
-            messages = await self._resolve_messages(chat_id, chat, shortcut)
-            if not messages:
-                continue
-
             last_known_id = await self.service.db.get_last_message(chat_id)
+            messages = await self._resolve_messages(chat_id, chat, shortcut, my_user_id)
             new_raw_messages = self._collect_new_messages(messages, last_known_id)
-            if not new_raw_messages and shortcut.unread:
-                new_raw_messages = self._collect_incoming_preview(messages, my_user_id, shortcut)
 
-            latest_id = sort_messages(messages, newest_first=True)[0].get("id")
-            if latest_id:
-                await self.service.db.set_last_message(chat_id, str(latest_id))
+            if not new_raw_messages:
+                new_raw_messages = self._fallback_last_message(
+                    chat, last_known_id, my_user_id, shortcut.unread
+                )
+
+            latest_id = None
+            if messages:
+                latest_id = sort_messages(messages, newest_first=True)[0].get("id")
+            if not latest_id:
+                latest_id = shortcut.last_message_id
 
             for raw_msg in new_raw_messages:
                 msg = build_chat_message(chat, raw_msg, my_user_id)
@@ -109,6 +112,12 @@ class ChatListener:
                 if not msg.content and not raw_msg.get("attachments"):
                     continue
 
+                logger.info(
+                    "📩 Новое сообщение Starvell: %s (author=%s): %s",
+                    chat_id[:8],
+                    msg.author_username or msg.author_id,
+                    msg.content[:80],
+                )
                 result.events.append(NewMessageEvent(msg, shortcut))
                 result.legacy_messages.append({
                     "chat_id": chat_id,
@@ -117,34 +126,40 @@ class ChatListener:
                     "plugin_data": message_to_plugin_data(msg, shortcut),
                 })
 
+            if latest_id:
+                await self.service.db.set_last_message(chat_id, str(latest_id))
+
         return result
 
     async def _prime_chat(self, chat_id: str, chat: Dict[str, Any], my_user_id: str) -> None:
-        messages = await self._resolve_messages(chat_id, chat, build_chat_shortcut(chat))
+        messages = extract_chat_messages(chat)
+        if not messages:
+            try:
+                messages = await self.service.get_chat_messages(chat_id, limit=20)
+            except Exception:
+                messages = []
+
         if messages:
             latest_id = sort_messages(messages, newest_first=True)[0].get("id")
             if latest_id:
                 await self.service.db.set_last_message(chat_id, str(latest_id))
+                return
+
+        last_msg = extract_last_message_dict(chat)
+        if last_msg.get("id"):
+            await self.service.db.set_last_message(chat_id, str(last_msg["id"]))
 
     async def _resolve_messages(
         self,
         chat_id: str,
         chat: Dict[str, Any],
         shortcut: ChatShortcut,
+        my_user_id: str,
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
-        embedded = chat.get("messages") or []
-        if isinstance(embedded, list) and embedded:
-            sorted_embedded = sort_messages(embedded, newest_first=True)
-            unread = int(chat.get("unreadMessageCount") or chat.get("unreadCount") or 0)
-            if unread <= len(sorted_embedded):
-                return sort_messages(embedded)
-
-        last_known_id = await self.service.db.get_last_message(chat_id)
-        if last_known_id and embedded:
-            ids = {str(m.get("id")) for m in embedded if m.get("id")}
-            if last_known_id in ids:
-                return sort_messages(embedded)
+        messages = extract_chat_messages(chat)
+        if messages:
+            return messages
 
         try:
             full = await self.service.get_chat_messages(chat_id, limit=limit)
@@ -153,7 +168,7 @@ class ChatListener:
         except Exception as exc:
             logger.debug(f"Не удалось загрузить историю чата {chat_id}: {exc}")
 
-        return sort_messages(embedded) if embedded else []
+        return []
 
     def _collect_new_messages(
         self,
@@ -165,7 +180,7 @@ class ChatListener:
 
         ordered = sort_messages(messages)
         if not last_known_id:
-            return ordered
+            return ordered[-1:] if ordered else []
 
         new_messages: List[Dict[str, Any]] = []
         passed = False
@@ -184,24 +199,29 @@ class ChatListener:
 
         return new_messages
 
-    def _collect_incoming_preview(
+    def _fallback_last_message(
         self,
-        messages: List[Dict[str, Any]],
+        chat: Dict[str, Any],
+        last_known_id: Optional[str],
         my_user_id: str,
-        shortcut: ChatShortcut,
-        limit: int = 5,
+        unread: bool,
     ) -> List[Dict[str, Any]]:
-        incoming = []
-        for msg in sort_messages(messages, newest_first=True):
-            author_id = str(msg.get("authorId") or "")
-            if my_user_id and author_id == my_user_id:
-                continue
-            content = msg.get("content") or msg.get("text") or ""
-            if content or msg.get("attachments"):
-                incoming.append(msg)
-            if len(incoming) >= limit:
-                break
-        return list(reversed(incoming))
+        last_msg = extract_last_message_dict(chat)
+        msg_id = str(last_msg.get("id") or "")
+        if not msg_id or msg_id == str(last_known_id or ""):
+            return []
+
+        author_id = str(last_msg.get("authorId") or "")
+        if my_user_id and author_id == my_user_id:
+            return []
+
+        content = last_msg.get("content") or last_msg.get("text") or ""
+        if not content and not last_msg.get("attachments"):
+            return []
+
+        if unread or msg_id != str(last_known_id or ""):
+            return [last_msg]
+        return []
 
     async def _get_my_user_id(self) -> str:
         info = self.service.last_user_info or await self.service.get_user_info()
