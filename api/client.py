@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -14,6 +15,7 @@ from .exceptions import NotFoundError, ForbiddenError, StarAPIError
 logger = logging.getLogger("API")
 
 _CATEGORIES_CACHE_FILE = Path("storage/cache/auto_raise_categories.json")
+_PROFILE_BLOCK_RETRY_SECONDS = 1800  # 30 мин — не долбить users/*.json при 403
 
 
 class StarAPI:
@@ -47,6 +49,8 @@ class StarAPI:
         self._build_id_cache = BuildIdCache(ttl=self.config.BUILD_ID_CACHE_TTL)
         self._socket_io_available: Optional[bool] = None
         self._qrator_cache: Optional[bool] = None
+        self._profile_blocked_until: float = 0.0
+        self._profile_block_logged: bool = False
 
     async def __aenter__(self):
         await self.session.start()
@@ -127,11 +131,11 @@ class StarAPI:
 
         referer = f"{self.config.BASE_URL}/users/{user_id}"
         attempts: List[Tuple[str, Optional[str]]] = [
+            ("account/sells.json", None),
+            ("account/offers.json", None),
             (f"users/{user_id}.json", f"?user_id={user_id}"),
             (f"user/{user_id}.json", f"?user_id={user_id}"),
             (f"user/{user_id}.json", None),
-            ("account/offers.json", None),
-            ("account/sells.json", None),
         ]
 
         last_error: Optional[Exception] = None
@@ -141,10 +145,10 @@ class StarAPI:
                     path,
                     params=params,
                     include_sid=True,
-                    referer=referer,
+                    referer=referer if "account/" not in path else f"{self.config.BASE_URL}/{path.replace('.json', '')}",
                 )
                 page_props = data.get("pageProps", {})
-                if self._extract_user_categories(page_props) or page_props.get("userProfileOffers"):
+                if self._extract_user_categories(page_props):
                     return page_props
             except ForbiddenError as exc:
                 last_error = exc
@@ -276,22 +280,41 @@ class StarAPI:
 
     async def _resolve_user_categories(self, user_id: int) -> Dict[int, List[int]]:
         """Полная цепочка получения категорий для авто-поднятия."""
+        cached = self._load_categories_cache(user_id)
+        now = time.time()
+
+        if cached and now < self._profile_blocked_until:
+            logger.debug(f"📦 Категории из кэша: {len(cached)} игр (профиль 403)")
+            return cached
+
         try:
             page_props = await self._get_user_page_props(user_id)
             game_categories = self._extract_user_categories(page_props)
             if game_categories:
                 self._save_categories_cache(user_id, game_categories)
+                self._profile_blocked_until = 0.0
+                self._profile_block_logged = False
                 return game_categories
         except ForbiddenError:
+            self._profile_blocked_until = now + _PROFILE_BLOCK_RETRY_SECONDS
+            if cached:
+                if not self._profile_block_logged:
+                    logger.info(
+                        f"📦 Профиль Starvell недоступен (403) — кэш: {len(cached)} игр, "
+                        f"повтор через {_PROFILE_BLOCK_RETRY_SECONDS // 60} мин"
+                    )
+                    self._profile_block_logged = True
+                else:
+                    logger.debug(f"📦 Категории из кэша: {len(cached)} игр")
+                return cached
             logger.warning(
                 "⚠️ Профиль Starvell заблокирован антиботом — пробую fallback через заказы/кэш"
             )
         except Exception as exc:
             logger.warning(f"⚠️ Не удалось получить профиль: {exc}")
 
-        cached = self._load_categories_cache(user_id)
         if cached:
-            logger.info(f"📦 Категории из кэша: {len(cached)} игр")
+            logger.debug(f"📦 Категории из кэша: {len(cached)} игр")
             return cached
 
         from_orders = await self._categories_from_orders()
@@ -312,13 +335,28 @@ class StarAPI:
 
     def _extract_user_categories(self, page_props: dict) -> Dict[int, List[int]]:
         """Сгруппировать категории лотов пользователя по game_id."""
+        game_categories: Dict[int, List[int]] = {}
+
+        for order in page_props.get("orders") or []:
+            if not isinstance(order, dict):
+                continue
+            details = order.get("offerDetails") or order.get("offer") or {}
+            game = details.get("game") or {}
+            category = details.get("category") or {}
+            game_id = game.get("id") or details.get("gameId")
+            category_id = category.get("id") or details.get("categoryId")
+            if game_id and category_id:
+                game_categories.setdefault(int(game_id), [])
+                cid = int(category_id)
+                if cid not in game_categories[int(game_id)]:
+                    game_categories[int(game_id)].append(cid)
+
         categories = page_props.get("userProfileOffers")
         if not categories:
             categories = (page_props.get("bff") or {}).get("userProfileOffers")
         if not categories:
             categories = page_props.get("categoriesWithOffers") or []
 
-        game_categories: Dict[int, List[int]] = {}
         for category in categories:
             if not isinstance(category, dict):
                 continue
