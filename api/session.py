@@ -260,6 +260,29 @@ class SessionManager:
         ) as resp:
             return resp.status
 
+    async def head_headers(
+        self,
+        url: str,
+        referer: str = None,
+        timeout_seconds: float = 5,
+    ) -> Dict[str, str]:
+        """HEAD-запрос и заголовки ответа (для QRATOR-диагностики)."""
+        if self._session is None:
+            await self.start()
+
+        request_headers = self._get_headers(referer)
+        cookies = self._get_cookies(False)
+        timeout = ClientTimeout(total=timeout_seconds, connect=timeout_seconds)
+        await throttle()
+        async with self._session.request(
+            "HEAD",
+            url,
+            headers=request_headers,
+            cookies=cookies,
+            timeout=timeout,
+        ) as resp:
+            return {k: v for k, v in resp.headers.items()}
+
     async def ws_connect(
         self,
         url: str,

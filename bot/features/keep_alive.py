@@ -36,7 +36,7 @@ class KeepAliveService:
         self._socket_fail_count = 0
         self._success_count = 0
         self._socket_success_count = 0
-        self._heartbeat_timeout = 15
+        self._heartbeat_timeout = 25
         self._http_fallback_interval = 30
         self._socket_stale_after = 45
         self._websocket_enabled = True

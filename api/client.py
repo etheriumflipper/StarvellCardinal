@@ -25,6 +25,8 @@ class StarAPI:
             user = await api.get_user_info()
             chats = await api.get_chats()
     """
+
+    QRATOR_WS_PORT = 8443
     
     def __init__(
         self,
@@ -44,7 +46,8 @@ class StarAPI:
         self.session = SessionManager(session_cookie, self.config)
         self._build_id_cache = BuildIdCache(ttl=self.config.BUILD_ID_CACHE_TTL)
         self._socket_io_available: Optional[bool] = None
-        
+        self._qrator_cache: Optional[bool] = None
+
     async def __aenter__(self):
         await self.session.start()
         return self
@@ -857,89 +860,107 @@ class StarAPI:
         return game_categories
     
     # ==================== Поддержка онлайна ====================
+
+    async def _is_qrator_protected(self) -> bool:
+        """Starvell за QRATOR отдаёт Socket.IO на порту 8443 (как в браузере)."""
+        if self._qrator_cache is not None:
+            return self._qrator_cache
+
+        try:
+            headers = await self.session.head_headers(
+                f"{self.config.BASE_URL}/",
+                referer=f"{self.config.BASE_URL}/",
+                timeout_seconds=5,
+            )
+            server = (headers.get("Server") or headers.get("server") or "").upper()
+            self._qrator_cache = server == "QRATOR"
+            if self._qrator_cache:
+                logger.info("ℹ️ QRATOR обнаружен — Socket.IO через порт 8443")
+        except Exception as exc:
+            logger.debug(f"Не удалось проверить QRATOR: {exc}")
+            self._qrator_cache = False
+
+        return self._qrator_cache
+
+    def _socket_io_http_base(self) -> str:
+        base = self.config.BASE_URL.rstrip("/")
+        if self._qrator_cache:
+            return f"{base}:{self.QRATOR_WS_PORT}"
+        return base
+
+    def _socket_io_wss_url(self) -> str:
+        base = self._socket_io_http_base()
+        ws_base = base.replace("https://", "wss://").replace("http://", "ws://")
+        return f"{ws_base}/socket.io/?EIO=4&transport=websocket"
     
     async def keep_alive(self) -> bool:
         """
-        Поддержка онлайн статуса (heartbeat)
-        Отправляет heartbeat запрос к API
-        
-        Returns:
-            True если запрос успешен, False если ошибка
+        Лёгкий HTTP fallback, если Socket.IO недоступен.
+        Реальный онлайн на Starvell держится через namespace /online (порт 8443 за QRATOR).
         """
-        if not self.session.get_sid():
-            try:
-                await self.get_user_info()
-            except Exception as sid_error:
-                logger.debug(f"Не удалось получить SID перед heartbeat: {sid_error}")
-
         try:
-            # Отправляем heartbeat запрос
-            await self.session.post_json(
-                f"{self.config.API_URL}/user/heartbeat",
-                data={},
-                referer=f"{self.config.BASE_URL}/",
+            build_id = await self._get_build_id()
+            await self.session.get_json(
+                f"{self.config.BASE_URL}/_next/data/{build_id}/chat.json",
+                referer=f"{self.config.BASE_URL}/chat",
+                headers={"x-nextjs-data": "1"},
                 include_sid=True,
             )
             return True
-        except Exception as heartbeat_error:
-            logger.debug(f"Heartbeat endpoint не сработал, пробуем fallback: {heartbeat_error}")
+        except Exception as chat_error:
+            logger.debug(f"KeepAlive chat.json fallback: {chat_error}")
 
-        # Резервные запросы тоже обновляют активность сессии на сайте.
-        for fallback_name, fallback_call in (
-            ("get_user_info", self.get_user_info),
-            ("get_chats", self.get_chats),
-        ):
-            try:
-                await fallback_call()
-                logger.debug(f"KeepAlive fallback успешен через {fallback_name}")
-                return True
-            except Exception as fallback_error:
-                logger.debug(f"KeepAlive fallback {fallback_name} не сработал: {fallback_error}")
+        try:
+            await self.get_user_info()
+            return True
+        except Exception as info_error:
+            logger.debug(f"KeepAlive index.json fallback: {info_error}")
 
         return False
 
     async def is_socket_io_available(self) -> bool:
-        """Проверить, доступен ли Socket.IO на Starvell (может быть отключён антиботом)."""
+        """Проверить Socket.IO (с учётом QRATOR-порта 8443)."""
         if self._socket_io_available is not None:
             return self._socket_io_available
 
-        polling_url = f"{self.config.BASE_URL}/socket.io/?EIO=4&transport=polling"
+        await self._is_qrator_protected()
+        polling_url = f"{self._socket_io_http_base()}/socket.io/?EIO=4&transport=polling"
         try:
             status = await asyncio.wait_for(
-                self.session.probe_status(polling_url, referer=f"{self.config.BASE_URL}/", timeout_seconds=5),
+                self.session.probe_status(
+                    polling_url,
+                    referer=f"{self.config.BASE_URL}/",
+                    timeout_seconds=5,
+                ),
                 timeout=8.0,
             )
             self._socket_io_available = status < 400
         except Exception:
             self._socket_io_available = False
 
-        if not self._socket_io_available:
-            logger.info(
-                "ℹ️ Socket.IO недоступен на Starvell — онлайн через HTTP heartbeat"
-            )
+        if self._socket_io_available:
+            if self._qrator_cache:
+                logger.info("✅ Socket.IO доступен (QRATOR :8443)")
+        else:
+            logger.info("ℹ️ Socket.IO недоступен — HTTP fallback для keep-alive")
+
         return self._socket_io_available
 
     async def connect_online_socket(self):
         """
-        Открыть реальный Socket.IO namespace /online, который использует фронт Starvell
-        для поддержания онлайн-статуса.
+        Socket.IO websocket + namespace /online (как фронт Starvell).
+        За QRATOR — wss://starvell.com:8443/socket.io/
         """
         if not await self.is_socket_io_available():
             raise NotFoundError("Socket.IO отключён на Starvell")
 
-        if not self.session.get_sid():
-            try:
-                await self.get_user_info()
-            except Exception as sid_error:
-                logger.debug(f"Не удалось получить SID перед online websocket: {sid_error}")
-
         return await self.session.ws_connect(
-            f"{self.config.BASE_URL.replace('https://', 'wss://').replace('http://', 'ws://')}/socket.io/?EIO=4&transport=websocket",
+            self._socket_io_wss_url(),
             referer=f"{self.config.BASE_URL}/",
             headers={
                 "origin": self.config.BASE_URL,
                 "cache-control": "no-cache",
                 "pragma": "no-cache",
             },
-            include_sid=True,
+            include_sid=False,
         )
